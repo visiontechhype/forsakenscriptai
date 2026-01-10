@@ -1,421 +1,373 @@
--- [[ ENTROPY FORSAKEN: ULTIMATE EDITION ]] --
--- Библиотека Rayfield с авто-загрузкой
+-- [[ ENTROPY FORSAKEN: ULTIMATE EDITION - REVAMPED ]] --
+-- [[ Coded by Gemini AI, ChromeTech, and my shattered nerves. ]] --
+-- Load Rayfield UI Library
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local Window = Rayfield:CreateWindow({
-   Name = "Entropy Engine | Forsaken v2.0",
-   LoadingTitle = "Initializing Forsaken Systems...",
-   LoadingSubtitle = "by Gemini AI Thought Partner",
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = "Entropy_Forsaken"
-   },
-   Discord = {
-      Enabled = false,
-      Invite = "noinv",
-      RememberJoins = true
-   },
-   KeySystem = false -- Отключил, чтобы не мешало
-})
-
--- ГЛОБАЛЬНЫЕ НАСТРОЙКИ
+-- Global Configuration Table (Saved by Rayfield)
 getgenv().Config = {
-    -- ESP
+    -- Branding
+    BrandName = "Entropy Forsaken | v2.1",
+    Author = "Gemini AI, ChromeTech & My Nerves",
+
+    -- Visuals (ESP)
     ESP_Enabled = false,
     Item_ESP = false,
     Killer_ESP = false,
-    -- Mechanics
-    AutoParry = false,
-    AutoCola = false,
-    PizzaAim = false,
-    InfiniteStamina = false,
-    -- Data
-    CurrentClass = "Unknown"
+    Survivor_ESP = false,
+    ShowItemNames = true,
+    ShowItemDistance = true,
+    ShowKillerNames = true,
+    ShowKillerDistance = true,
+    ShowSurvivorNames = true,
+    ShowSurvivorDistance = true,
+    ItemESPColor = Color3.fromRGB(0, 255, 150),
+    KillerESPColor = Color3.fromRGB(255, 0, 0),
+    SurvivorESPColor = Color3.fromRGB(0, 150, 255),
+    FullBright = false,
+    DisableParticles = false,
+    DisableDecals = false,
+
+    -- Character Mechanics
+    AutoParry = false,       -- Guest 1337
+    AutoCola = false,        -- All Survivors
+    PizzaAim = false,        -- Elliot
+    InfiniteStamina = false, -- All Survivors
+    InfiniteOxygen = false,  -- All Survivors
+    WalkSpeed = 16,
+    JumpPower = 50,
+    NoClip = false,
+    FlySpeed = 50,           -- Not implemented as flight, but value for future
+    AutoCleanse = false,     -- Anti-1x1x1x1
+    AutoBuild = false,       -- Builderman
+    ChanceLuck = false,      -- Chance
+    InfShadow = false,       -- Dusekkar
+    AutoFarmItems = false,   -- Auto-Loot
+    MegaFarm = false,        -- Combines AutoParry, AutoCola, AutoCleanse, AutoFarmItems
+
+    -- Killer Mode
+    KillAura = false,
+    AuraRange = 20,
+
+    -- Combat & Aim
+    SilentAim = false,
+    ShowFov = false,
+    FovRadius = 150,
+    TargetPart = "HumanoidRootPart",
+
+    -- Server Management
+    AutoLeave = false,
+    WebhookEnabled = false, -- Future expansion for Discord webhooks
+    AdminDetectNames = {"Owner", "Moderator", "Dev"} -- Placeholder names for admin detection
 }
 
--- БАЗА ДАННЫХ ИГРЫ (Wiki Data)
-local GameData = {
-    Killers = {"1x1x1x1", "John Doe", "The Hidden", "The Overseer", "The Scourge", "C00lkidd", "The Guest (Killer)"},
-    Survivors = {"Guest 1337", "Elliot", "Noob", "Medic", "Builderman", "Dusekkar", "Chance"},
-    Items = {
-        Support = {"Medkit", "Bandage", "Splint"},
-        Buffs = {"BloxyCola", "Witch Brew", "Slateskin Potion"},
-        Special = {"Pizza", "Battery", "Sentry Gun"}
-    }
-}
+-- Rayfield Window Creation
+local Window = Rayfield:CreateWindow({
+   Name = getgenv().Config.BrandName,
+   LoadingTitle = "Initializing " .. getgenv().Config.BrandName,
+   LoadingSubtitle = getgenv().Config.Author,
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "Entropy_Forsaken_Config"
+   },
+   Discord = {Enabled = false},
+   KeySystem = false
+})
 
--- СЕРВИСЫ
+-- Services
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Char:WaitForChild("Humanoid")
+local RootPart = Char:WaitForChild("HumanoidRootPart")
+local UIS = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
--- ФУНКЦИИ МОДУЛЕЙ
-local function Notify(title, msg)
-    Rayfield:Notify({Title = title, Content = msg, Duration = 5, Image = 4483362458})
-end
+-- Game Data (Wiki-based, as extensive as possible)
+local GameData = {
+    Killers = {"1x1x1x1", "John Doe", "The Hidden", "The Overseer", "The Scourge", "C00lkidd", "The Guest (Killer)", "UnknownKiller"},
+    Survivors = {"Guest 1337", "Elliot", "Noob", "Medic", "Builderman", "Dusekkar", "Chance", "UnknownSurvivor"},
+    Items = {
+        Support = {"Medkit", "Bandage", "Splint", "First Aid Kit", "Syringe"},
+        Buffs = {"BloxyCola", "Witch Brew", "Slateskin Potion", "Energy Drink"},
+        Special = {"Pizza", "Battery", "Sentry Gun", "Grenade", "Flare Gun", "Keycard"}
+    }
+}
 
--- Система детекта класса (Survivor Checker)
+-- Current Player Class Detection
+local CurrentClass = "Unknown"
 local function DetectClass()
-    -- Логика проверки текущего персонажа игрока
-    for _, name in pairs(GameData.Survivors) do
-        if Char:FindFirstChild(name) or LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild(name) then
-            getgenv().Config.CurrentClass = name
-            return name
+    if Char then
+        for _, name in pairs(GameData.Survivors) do
+            if Char:FindFirstChild(name) or LocalPlayer.PlayerGui:FindFirstChild(name) then
+                CurrentClass = name
+                return name
+            end
+        end
+        for _, name in pairs(GameData.Killers) do
+            if Char:FindFirstChild(name) or LocalPlayer.PlayerGui:FindFirstChild(name) then
+                CurrentClass = name
+                return name
+            end
         end
     end
+    CurrentClass = "Unknown"
     return "Unknown"
 end
+DetectClass() -- Initial detection
 
--- [ ВКЛАДКА: MAIN ]
+-- Helper Function for Notifications
+local function Notify(title, msg, image)
+    Rayfield:Notify({Title = title, Content = msg, Duration = 5, Image = image or 4483362458})
+end
+
+-- ESP Manager (Handles Drawing and Updates)
+local ESP_Highlights = {}
+local ESP_Labels = {}
+
+local function ClearESP()
+    for _, hl in pairs(ESP_Highlights) do hl:Destroy() end
+    for _, lbl in pairs(ESP_Labels) do lbl:Destroy() end
+    ESP_Highlights = {}
+    ESP_Labels = {}
+end
+
+local function CreateESP(object, color, name, distance, showName, showDistance)
+    if not object or not object:IsA("BasePart") or not object.Parent or not object.Parent:FindFirstChild("Humanoid") then return end
+
+    local existingHighlight = object:FindFirstChild("ESPHighlight")
+    if not existingHighlight then
+        local hl = Instance.new("Highlight")
+        hl.Name = "ESPHighlight"
+        hl.Parent = object
+        hl.FillColor = color
+        hl.OutlineColor = color
+        hl.FillTransparency = 0.6
+        hl.OutlineTransparency = 0.1
+        table.insert(ESP_Highlights, hl)
+    else
+        existingHighlight.FillColor = color
+        existingHighlight.OutlineColor = color
+    end
+
+    if showName or showDistance then
+        local viewportPoint, onScreen = workspace.CurrentCamera:WorldToViewportPoint(object.Position)
+        if onScreen then
+            local label = Instance.new("TextLabel")
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.new(0, 100, 0, 20)
+            label.Position = UDim2.new(0, viewportPoint.X, 0, viewportPoint.Y)
+            label.Font = Enum.Font.SourceSansBold
+            label.TextSize = 14
+            label.TextColor3 = color
+            label.ZIndex = 10
+            label.TextStrokeTransparency = 0.8
+            label.Parent = LocalPlayer.PlayerGui
+            
+            local textContent = ""
+            if showName then textContent = name end
+            if showDistance then
+                if textContent ~= "" then textContent = textContent .. " | " end
+                textContent = textContent .. tostring(math.floor(distance)) .. "m"
+            end
+            label.Text = textContent
+            table.insert(ESP_Labels, label)
+        end
+    end
+end
+
+-- UI Construction
+-- [ TAB: Main ]
 local MainTab = Window:CreateTab("Main", 4483362458)
-MainTab:CreateSection("Character Mechanics: " .. DetectClass())
-
-MainTab:CreateToggle({
-   Name = "Guest 1337: God-Mode Auto Parry",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.AutoParry = Value
-      if Value then
-          Notify("Combat", "Auto-Parry Activated for Guest 1337")
-      end
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Elliot: Pizza Projectile Prediction",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.PizzaAim = Value
-   end,
-})
+MainTab:CreateSection("Character: " .. CurrentClass)
 
 MainTab:CreateSlider({
    Name = "WalkSpeed Hack",
    Range = {16, 150},
    Increment = 1,
    Suffix = "Speed",
-   CurrentValue = 16,
+   CurrentValue = getgenv().Config.WalkSpeed,
    Callback = function(Value)
-      LocalPlayer.Character.Humanoid.WalkSpeed = Value
+      getgenv().Config.WalkSpeed = Value
+      Humanoid.WalkSpeed = Value
    end,
 })
 
--- [ ВКЛАДКА: VISUALS (ESP) ]
-local VisualsTab = Window:CreateTab("Visuals", 4483345998)
+MainTab:CreateSlider({
+   Name = "JumpPower Hack",
+   Range = {50, 200},
+   Increment = 5,
+   Suffix = "Jump",
+   CurrentValue = getgenv().Config.JumpPower,
+   Callback = function(Value)
+      getgenv().Config.JumpPower = Value
+      Humanoid.JumpPower = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Infinite Stamina/Oxygen",
+   CurrentValue = getgenv().Config.InfiniteStamina,
+   Callback = function(Value)
+      getgenv().Config.InfiniteStamina = Value
+      getgenv().Config.InfiniteOxygen = Value
+   end,
+})
+
+-- [ TAB: Visuals (ESP) ]
+local VisualsTab = Window:CreateTab("Visuals (ESP)", 4483345998)
+VisualsTab:CreateSection("Global ESP")
 
 VisualsTab:CreateToggle({
    Name = "Master ESP Switch",
-   CurrentValue = false,
+   CurrentValue = getgenv().Config.ESP_Enabled,
    Callback = function(Value)
       getgenv().Config.ESP_Enabled = Value
+      if not Value then ClearESP() end
    end,
 })
 
 VisualsTab:CreateToggle({
-   Name = "Highlight Items (Medkits/Cola)",
-   CurrentValue = false,
+   Name = "Full Bright (No Fog/Shadows)",
+   CurrentValue = getgenv().Config.FullBright,
    Callback = function(Value)
-      getgenv().Config.Item_ESP = Value
-   end,
-})
-
-VisualsTab:CreateToggle({
-   Name = "Killer Tracker (Red)",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.Killer_ESP = Value
-   end,
-})
-
--- [ ГЛАВНЫЙ ЦИКЛ ОБРАБОТКИ (HEARTBEAT) ]
--- Тут вся магия на 2000+ строк потенциальной логики
-RunService.Heartbeat:Connect(function()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    -- 1. ЛОГИКА АВТО-ПАРИРОВАНИЯ (GUEST 1337)
-    if getgenv().Config.AutoParry then
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local dist = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                if dist < 15 then
-                    -- Проверка анимации атаки (упрощенно)
-                    local anims = p.Character.Humanoid:GetPlayingAnimationTracks()
-                    for _, a in pairs(anims) do
-                        if a.Name:lower():find("attack") or a.Name:lower():find("swing") then
-                            -- Генерируем событие блока
-                            game:GetService("ReplicatedStorage").Remotes.BlockEvent:FireServer(true)
-                            task.wait(0.1)
-                            game:GetService("ReplicatedStorage").Remotes.PunchEvent:FireServer()
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- 2. ESP ЛОГИКА (БЕЗ ЛАГОВ)
-    if getgenv().Config.ESP_Enabled then
-        -- Подсветка предметов
-        if getgenv().Config.Item_ESP then
-            for _, item in pairs(workspace:GetChildren()) do
-                local isGameItem = false
-                for _, category in pairs(GameData.Items) do
-                    for _, itemName in pairs(category) do
-                        if item.Name == itemName then isGameItem = true end
-                    end
-                end
-                
-                if isGameItem and not item:FindFirstChild("EntropyHigh") then
-                    local hl = Instance.new("Highlight", item)
-                    hl.Name = "EntropyHigh"
-                    hl.FillColor = Color3.fromRGB(255, 255, 0)
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                end
-            end
-        end
-
-        -- Подсветка Убийц
-        if getgenv().Config.Killer_ESP then
-            for _, p in pairs(Players:GetPlayers()) do
-                for _, killerName in pairs(GameData.Killers) do
-                    if (p.Name == killerName or p:FindFirstChild(killerName)) and p.Character then
-                        if not p.Character:FindFirstChild("KillerHigh") then
-                            local hl = Instance.new("Highlight", p.Character)
-                            hl.Name = "KillerHigh"
-                            hl.FillColor = Color3.fromRGB(255, 0, 0)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Авто-использование Bloxy Cola (Automation)
-task.spawn(function()
-    while task.wait(0.5) do
-        if getgenv().Config.AutoCola then
-            local stamina = LocalPlayer.Character:GetAttribute("Stamina") or 100
-            if stamina < 20 then
-                local cola = LocalPlayer.Backpack:FindFirstChild("BloxyCola") or Char:FindFirstChild("BloxyCola")
-                if cola then
-                    cola.Parent = Char
-                    cola:Activate()
-                    task.wait(0.1)
-                    cola.Parent = LocalPlayer.Backpack
-                end
-            end
-        end
-    end
-end)
-
-Notify("Success", "All Entropy Systems Online. Press K to toggle menu.")
--- [[ МОДУЛЬ 11: ADVANCED SURVIVOR AUTOMATION ]] --
-
--- Дополнительные переменные в конфиг
-getgenv().Config.AutoCleanse = true
-getgenv().Config.AutoBuild = false
-getgenv().Config.ChanceLuck = false
-
--- 3. ЛОГИКА ДЛЯ CHANCE (АВТО-УДАЧА)
--- Chance зависит от таймингов. Этот модуль пытается "поймать" лучший момент для ролла.
-task.spawn(function()
-    while task.wait() do
-        if getgenv().Config.CurrentClass == "Chance" and getgenv().Config.ChanceLuck then
-            local Tool = Char:FindFirstChild("Dice") or LocalPlayer.Backpack:FindFirstChild("Dice")
-            if Tool then
-                -- Эмуляция идеального броска
-                game:GetService("ReplicatedStorage").Remotes.ChanceRemote:FireServer("Roll", {
-                    ["ForceLuck"] = true,
-                    ["Timestamp"] = tick()
-                })
-            end
-        end
-    end
-end)
-
--- 4. ЛОГИКА ДЛЯ BUILDERMAN (INSTANT STRUCTURES)
--- Автоматически ставит турели и стены, если рядом Убийца
-local function DeployDefense()
-    local Sentry = LocalPlayer.Backpack:FindFirstChild("Sentry Gun") or Char:FindFirstChild("Sentry Gun")
-    if Sentry then
-        Sentry.Parent = Char
-        Sentry:Activate()
-        task.wait(0.1)
-        -- Посылаем сигнал на установку в координаты перед собой
-        local Pos = Char.HumanoidRootPart.Position + (Char.HumanoidRootPart.CFrame.LookVector * 5)
-        game:GetService("ReplicatedStorage").Remotes.BuildEvent:FireServer("Place", "Sentry", Pos)
-    end
-end
-
--- 5. СИСТЕМА ANTI-DEBUFF (Очистка от инфекции 1x1x1x1 и багов John Doe)
-task.spawn(function()
-    while task.wait(0.1) do
-        if getgenv().Config.AutoCleanse then
-            -- Проверка на наличие эффектов "Infection" или "Glitch" в персонаже
-            for _, effect in pairs(Char:GetChildren()) do
-                if effect.Name == "Infection" or effect.Name == "GlitchEffect" or effect:IsA("InfectionScript") then
-                    -- Используем Medkit или встроенную способность очистки
-                    local Medkit = Char:FindFirstChild("Medkit") or LocalPlayer.Backpack:FindFirstChild("Medkit")
-                    if Medkit then
-                        Medkit.Parent = Char
-                        Medkit:Activate()
-                    end
-                    -- Вызов ретейла очистки (если доступно в игре)
-                    game:GetService("ReplicatedStorage").Remotes.SelfAction:FireServer("Cleanse")
-                end
-            end
-        end
-    end
-end)
-
--- [ НОВАЯ ВКЛАДКА: AUTOMATION ]
-local AutoTab = Window:CreateTab("Automation", 4483362458)
-
-AutoTab:CreateToggle({
-   Name = "Auto-Cleanse (Anti-1x1x1x1)",
-   CurrentValue = true,
-   Callback = function(Value)
-      getgenv().Config.AutoCleanse = Value
-   end,
-})
-
-AutoTab:CreateToggle({
-   Name = "Builderman: Panic Defense",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.AutoBuild = Value
-   end,
-})
-
--- [ МОДУЛЬ 12: КАРТА И ТРАНСПОРТ ]
-local MiscTab = Window:CreateTab("Misc", 4483362458)
-
-MiscTab:CreateButton({
-   Name = "Full Bright (No Fog)",
-   Callback = function()
-      game:GetService("Lighting").FogEnd = 999999
-      game:GetService("Lighting").Brightness = 2
-      game:GetService("Lighting").GlobalShadows = false
-      for _, v in pairs(game:GetService("Lighting"):GetChildren()) do
-          if v:IsA("Atmosphere") or v:IsA("Sky") then v:Destroy() end
+      getgenv().Config.FullBright = Value
+      local lighting = game:GetService("Lighting")
+      lighting.FogEnd = Value and 999999 or 0
+      lighting.Brightness = Value and 2 or 1
+      lighting.GlobalShadows = not Value
+      for _, v in pairs(lighting:GetChildren()) do
+          if v:IsA("Atmosphere") or v:IsA("Sky") then v.Enabled = not Value end
       end
    end,
 })
 
-MiscTab:CreateButton({
-   Name = "Infinite Oxygen / Stamina (Patch)",
-   Callback = function()
-       -- Попытка хука атрибутов
-       local mt = getrawmetatable(game)
-       setreadonly(mt, false)
-       local old = mt.__index
-       mt.__index = newcclosure(function(t, k)
-           if k == "Stamina" or k == "Oxygen" then return 100 end
-           return old(t, k)
-       end)
-       setreadonly(mt, true)
-       Notify("System", "Stamina/Oxygen Locked to 100")
+VisualsTab:CreateToggle({
+   Name = "Remove Particles",
+   CurrentValue = getgenv().Config.DisableParticles,
+   Callback = function(Value)
+      getgenv().Config.DisableParticles = Value
+      for _, v in pairs(workspace:GetDescendants()) do
+          if v:IsA("ParticleEmitter") then v.Enabled = not Value end
+      end
    end,
 })
 
--- [ ОБРАБОТКА ДИСТАНЦИИ ДЛЯ BUILDERMAN ]
-RunService.Stepped:Connect(function()
-    if getgenv().Config.AutoBuild then
-        for _, p in pairs(Players:GetPlayers()) do
-            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                for _, killer in pairs(GameData.Killers) do
-                    if p.Name == killer or p:FindFirstChild(killer) then
-                        local dist = (Char.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                        if dist < 20 then
-                            DeployDefense()
-                            task.wait(5) -- Кулдаун на постройку
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
--- [[ МОДУЛЬ 13: ПРЕДИКТИВНЫЙ SILENT AIM & БАЛЛИСТИКА ]] --
+VisualsTab:CreateToggle({
+   Name = "Remove Decals & Textures",
+   CurrentValue = getgenv().Config.DisableDecals,
+   Callback = function(Value)
+      getgenv().Config.DisableDecals = Value
+      for _, v in pairs(workspace:GetDescendants()) do
+          if v:IsA("Decal") or v:IsA("Texture") then v.Transparency = Value and 1 or 0 end
+      end
+   end,
+})
 
-getgenv().Config.SilentAim = false
-getgenv().Config.ShowFov = false
-getgenv().Config.FovRadius = 150
-getgenv().Config.TargetPart = "HumanoidRootPart"
+VisualsTab:CreateSection("Item ESP")
+VisualsTab:CreateToggle({
+   Name = "Highlight Items (Medkits/Cola)",
+   CurrentValue = getgenv().Config.Item_ESP,
+   Callback = function(Value) getgenv().Config.Item_ESP = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Item Names",
+   CurrentValue = getgenv().Config.ShowItemNames,
+   Callback = function(Value) getgenv().Config.ShowItemNames = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Item Distance",
+   CurrentValue = getgenv().Config.ShowItemDistance,
+   Callback = function(Value) getgenv().Config.ShowItemDistance = Value end,
+})
+VisualsTab:CreateColorPicker({
+   Name = "Item ESP Color",
+   CurrentValue = getgenv().Config.ItemESPColor,
+   Callback = function(Value) getgenv().Config.ItemESPColor = Value end,
+})
 
--- Рисуем круг FOV для Сайлент Аима
+VisualsTab:CreateSection("Killer ESP")
+VisualsTab:CreateToggle({
+   Name = "Highlight Killers",
+   CurrentValue = getgenv().Config.Killer_ESP,
+   Callback = function(Value) getgenv().Config.Killer_ESP = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Killer Names",
+   CurrentValue = getgenv().Config.ShowKillerNames,
+   Callback = function(Value) getgenv().Config.ShowKillerNames = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Killer Distance",
+   CurrentValue = getgenv().Config.ShowKillerDistance,
+   Callback = function(Value) getgenv().Config.ShowKillerDistance = Value end,
+})
+VisualsTab:CreateColorPicker({
+   Name = "Killer ESP Color",
+   CurrentValue = getgenv().Config.KillerESPColor,
+   Callback = function(Value) getgenv().Config.KillerESPColor = Value end,
+})
+
+VisualsTab:CreateSection("Survivor ESP")
+VisualsTab:CreateToggle({
+   Name = "Highlight Survivors",
+   CurrentValue = getgenv().Config.Survivor_ESP,
+   Callback = function(Value) getgenv().Config.Survivor_ESP = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Survivor Names",
+   CurrentValue = getgenv().Config.ShowSurvivorNames,
+   Callback = function(Value) getgenv().Config.ShowSurvivorNames = Value end,
+})
+VisualsTab:CreateToggle({
+   Name = "Show Survivor Distance",
+   CurrentValue = getgenv().Config.ShowSurvivorDistance,
+   Callback = function(Value) getgenv().Config.ShowSurvivorDistance = Value end,
+})
+VisualsTab:CreateColorPicker({
+   Name = "Survivor ESP Color",
+   CurrentValue = getgenv().Config.SurvivorESPColor,
+   Callback = function(Value) getgenv().Config.SurvivorESPColor = Value end,
+})
+
+-- [ TAB: Combat & Aim ]
+local CombatTab = Window:CreateTab("Combat & Aim", 4483362458)
+CombatTab:CreateSection("Survivor Combat")
+
+CombatTab:CreateToggle({
+   Name = "Guest 1337: God-Mode Auto Parry",
+   CurrentValue = getgenv().Config.AutoParry,
+   Callback = function(Value)
+      getgenv().Config.AutoParry = Value
+      if Value then Notify("Combat", "Auto-Parry Activated") end
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Elliot: Pizza Projectile Prediction",
+   CurrentValue = getgenv().Config.PizzaAim,
+   Callback = function(Value) getgenv().Config.PizzaAim = Value end,
+})
+
+CombatTab:CreateSection("General Aim")
+CombatTab:CreateToggle({
+   Name = "Predictive Silent Aim",
+   CurrentValue = getgenv().Config.SilentAim,
+   Callback = function(Value) getgenv().Config.SilentAim = Value end,
+})
+
 local FovCircle = Drawing.new("Circle")
 FovCircle.Thickness = 1
 FovCircle.NumSides = 100
 FovCircle.Radius = getgenv().Config.FovRadius
 FovCircle.Filled = false
-FovCircle.Visible = false
+FovCircle.Visible = getgenv().Config.ShowFov
 FovCircle.Color = Color3.fromRGB(255, 255, 255)
-
--- Функция поиска ближайшего Убийцы в FOV
-local function GetClosestKiller()
-    local target = nil
-    local maxDist = getgenv().Config.FovRadius
-    
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(getgenv().Config.TargetPart) then
-            -- Проверяем, является ли игрок убийцей
-            local isKiller = false
-            for _, kName in pairs(GameData.Killers) do
-                if p.Name == kName or p.Character:FindFirstChild(kName) then isKiller = true break end
-            end
-            
-            if isKiller then
-                local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(p.Character[getgenv().Config.TargetPart].Position)
-                if onScreen then
-                    local mousePos = game:GetService("UserInputService"):GetMouseLocation()
-                    local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                    if dist < maxDist then
-                        target = p.Character[getgenv().Config.TargetPart]
-                        maxDist = dist
-                    end
-                end
-            end
-        end
-    end
-    return target
-end
-
--- Хук для Silent Aim (перехват выстрела/броска)
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    
-    if getgenv().Config.SilentAim and method == "FireServer" then
-        if self.Name == "ThrowRemote" or self.Name == "AttackRemote" or self.Name == "PizzaRemote" then
-            local target = GetClosestKiller()
-            if target then
-                -- Подменяем позицию цели на голову или торс убийцы
-                args[1] = target.Position
-                return oldNamecall(self, unpack(args))
-            end
-        end
-    end
-    return oldNamecall(self, ...)
-end))
-
--- [ ВКЛАДКА: COMBAT EVOLVED ]
-local CombatTab = Window:CreateTab("Advanced Combat", 4483362458)
-
-CombatTab:CreateToggle({
-   Name = "Predictive Silent Aim",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.SilentAim = Value
-   end,
-})
 
 CombatTab:CreateToggle({
    Name = "Show FOV Circle",
-   CurrentValue = false,
+   CurrentValue = getgenv().Config.ShowFov,
    Callback = function(Value)
       getgenv().Config.ShowFov = Value
       FovCircle.Visible = Value
@@ -426,108 +378,21 @@ CombatTab:CreateSlider({
    Name = "FOV Size",
    Range = {50, 800},
    Increment = 10,
-   CurrentValue = 150,
+   CurrentValue = getgenv().Config.FovRadius,
    Callback = function(Value)
       getgenv().Config.FovRadius = Value
       FovCircle.Radius = Value
    end,
 })
 
--- [ МОДУЛЬ 14: GOD-VIEW (DRONE CAMERA) ]
-local isDroneMode = false
-local DroneCam = nil
-
-local function ToggleDroneMode()
-    isDroneMode = not isDroneMode
-    if isDroneMode then
-        Notify("Camera", "Drone Mode Enabled (N to Move)")
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
-        task.spawn(function()
-            while isDroneMode do
-                local cam = workspace.CurrentCamera
-                cam.CFrame = cam.CFrame * CFrame.new(0, 50, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                task.wait(0.5)
-                break -- Только один раз поднимаем, далее управление
-            end
-        end)
-    else
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        Notify("Camera", "Returning to Character")
-    end
-end
-
-MiscTab:CreateButton({
-   Name = "Toggle God-View (Top Down)",
-   Callback = function()
-       ToggleDroneMode()
-   end,
-})
-
--- [ ОБНОВЛЕНИЕ FOV ЦИКЛ ]
-RunService.RenderStepped:Connect(function()
-    if getgenv().Config.ShowFov then
-        FovCircle.Position = game:GetService("UserInputService"):GetMouseLocation()
-    end
-end)
-
--- [ МОДУЛЬ 15: AUTO-INTERACT (FARMER) ]
--- Автоматически нажимает "E" на важные предметы рядом
-task.spawn(function()
-    while task.wait(0.3) do
-        if getgenv().Config.AutoFarmItems then
-            for _, obj in pairs(workspace:GetChildren()) do
-                if obj:FindFirstChild("ClickDetector") or obj:FindFirstChild("ProximityPrompt") then
-                    local dist = (Char.HumanoidRootPart.Position - obj.Position).Magnitude
-                    if dist < 12 then
-                        -- Проверяем, полезный ли это предмет
-                        for _, cat in pairs(GameData.Items) do
-                            for _, name in pairs(cat) do
-                                if obj.Name == name then
-                                    fireproximityprompt(obj.ProximityPrompt)
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-AutoTab:CreateToggle({
-   Name = "Auto-Loot Items (Proximity)",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.AutoFarmItems = Value
-   end,
-})
--- [[ МОДУЛЬ 16: PHASE SHIFT (NOCLIP) & FLIGHT ]] --
-
-getgenv().Config.NoClip = false
-getgenv().Config.FlySpeed = 50
-
--- Система NoClip через Stepped (чтобы не проваливаться под пол)
-RunService.Stepped:Connect(function()
-    if getgenv().Config.NoClip then
-        for _, part in pairs(Char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide == true then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- Создаем вкладку Movement
+-- [ TAB: Movement ]
 local MoveTab = Window:CreateTab("Movement", 4483362458)
-
 MoveTab:CreateToggle({
    Name = "NoClip (Walk Through Walls)",
-   CurrentValue = false,
+   CurrentValue = getgenv().Config.NoClip,
    Callback = function(Value)
       getgenv().Config.NoClip = Value
       if not Value then
-          -- Возвращаем коллизию при выключении
           for _, part in pairs(Char:GetDescendants()) do
               if part:IsA("BasePart") then part.CanCollide = true end
           end
@@ -535,384 +400,132 @@ MoveTab:CreateToggle({
    end,
 })
 
--- [[ МОДУЛЬ 17: EMERGENCY ESCAPE & EVENT TRACKER ]] --
-
-local function TeleportToExit()
-    local Exit = workspace:FindFirstChild("EscapeGate") or workspace:FindFirstChild("Exit")
-    if Exit then
-        Char.HumanoidRootPart.CFrame = Exit.CFrame + Vector3.new(0, 5, 0)
-        Notify("Escape", "Teleporting to Exit Gate!")
-    else
-        Notify("Error", "Exit Gate not found or not powered yet.")
-    end
-end
-
-AutoTab:CreateButton({
-   Name = "Instant Teleport to Exit (If Open)",
-   Callback = function()
-       TeleportToExit()
-   end,
+-- [ TAB: Automation ]
+local AutoTab = Window:CreateTab("Automation", 4483362458)
+AutoTab:CreateToggle({
+   Name = "Auto-Cleanse (Anti-1x1x1x1)",
+   CurrentValue = getgenv().Config.AutoCleanse,
+   Callback = function(Value) getgenv().Config.AutoCleanse = Value end,
 })
-
--- Детектор важных событий в мире (Wiki-based)
-task.spawn(function()
-    local LastEvent = ""
-    while task.wait(1) do
-        -- Отслеживаем появление редких предметов или боссов
-        for _, v in pairs(workspace:GetChildren()) do
-            if v.Name == "SpecialItem" or v.Name == "GoldenPizza" then
-                if LastEvent ~= v.Name then
-                    Notify("RARE ITEM", v.Name .. " has spawned on the map!")
-                    LastEvent = v.Name
-                end
-            end
-        end
-        
-        -- Проверка статуса ворот (через атрибуты или GUI)
-        local Gate = workspace:FindFirstChild("EscapeGate")
-        if Gate and Gate:GetAttribute("Powered") == true then
-             Notify("GATE OPEN", "The exit is powered! Get out now!")
-             break -- Останавливаем цикл, чтобы не спамить
-        end
-    end
-end)
-
--- [[ МОДУЛЬ 18: CHANCE'S GAMBLE (MAX LUCK) ]] --
--- Если ты играешь за Chance, этот код пытается "подкрутить" рандом
-
-if DetectClass() == "Chance" then
-    local ChanceSection = MainTab:CreateSection("Chance Specials")
-    MainTab:CreateButton({
-        Name = "Force Triple Six (Exploit)",
-        Callback = function()
-            local Dice = Char:FindFirstChild("Dice") or LocalPlayer.Backpack:FindFirstChild("Dice")
-            if Dice then
-                -- Отправка пакета с фальшивым результатом
-                game:GetService("ReplicatedStorage").Remotes.DiceRemote:FireServer("Result", 666)
-                Notify("Exploit", "Attempted to force triple six!")
-            end
-        end,
-    })
-end
-
--- [[ МОДУЛЬ 19: DUSEKKAR'S SHADOW STEP ]] --
--- Специальная логика для Дусеккара
-if DetectClass() == "Dusekkar" then
-    MainTab:CreateToggle({
-        Name = "Infinite Shadow Power",
-        CurrentValue = false,
-        Callback = function(Value)
-            getgenv().Config.InfShadow = Value
-        end,
-    })
-    
-    RunService.Heartbeat:Connect(function()
-        if getgenv().Config.InfShadow then
-            LocalPlayer.Character:SetAttribute("ShadowEnergy", 100)
-        end
-    end)
-end
-
--- [ ФИНАЛЬНЫЙ ТРЮК: ANTI-AFK ]
-local VirtualUser = game:GetService("VirtualUser")
-LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-    Notify("System", "Anti-AFK Action Performed")
-end)
-
--- Горячая клавиша для скрытия меню
-Rayfield:Notify({Title = "Ready", Content = "Script fully loaded! Press 'K' to hide UI.", Duration = 10})
--- [[ МОДУЛЬ 20: KILLER DOMINATION (AURA & VOID) ]] --
-
-getgenv().Config.KillAura = false
-getgenv().Config.AuraRange = 20
-
--- Создаем вкладку для игры за Убийцу
-local KillerTab = Window:CreateTab("Killer Mode", 4483362458)
-
-KillerTab:CreateToggle({
-   Name = "Kill Aura (Hit Survivors)",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.KillAura = Value
-   end,
+AutoTab:CreateToggle({
+   Name = "Builderman: Panic Defense",
+   CurrentValue = getgenv().Config.AutoBuild,
+   Callback = function(Value) getgenv().Config.AutoBuild = Value end,
 })
-
-KillerTab:CreateSlider({
-   Name = "Aura Reach",
-   Range = {5, 50},
-   Increment = 1,
-   CurrentValue = 20,
-   Callback = function(Value)
-      getgenv().Config.AuraRange = Value
-   end,
+AutoTab:CreateToggle({
+   Name = "Auto-Loot Items (Proximity)",
+   CurrentValue = getgenv().Config.AutoFarmItems,
+   Callback = function(Value) getgenv().Config.AutoFarmItems = Value end,
 })
-
--- Логика Kill Aura
-task.spawn(function()
-    while task.wait(0.1) do
-        if getgenv().Config.KillAura then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (Char.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                    if dist <= getgenv().Config.AuraRange then
-                        -- Проверка: не является ли цель тоже убийцей (Friendly Fire Off)
-                        local isTargetKiller = false
-                        for _, kName in pairs(GameData.Killers) do
-                            if p.Name == kName then isTargetKiller = true break end
-                        end
-                        
-                        if not isTargetKiller then
-                            -- Атака (подставь имя нужного Remote из игры)
-                            local Weapon = Char:FindFirstChildOfClass("Tool")
-                            if Weapon then
-                                game:GetService("ReplicatedStorage").Remotes.AttackEvent:FireServer(p.Character.HumanoidRootPart)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- [[ МОДУЛЬ 21: MEDIC AUTO-HEAL (TEAM SUPPORT) ]] --
-
-getgenv().Config.AutoHealTeam = false
-
-local function HealAlly(targetChar)
-    local Medkit = LocalPlayer.Backpack:FindFirstChild("Medkit") or Char:FindFirstChild("Medkit")
-    if Medkit then
-        Char.Humanoid:EquipTool(Medkit)
-        task.wait(0.05)
-        game:GetService("ReplicatedStorage").Remotes.HealEvent:FireServer(targetChar)
-    end
-end
-
 AutoTab:CreateToggle({
    Name = "Medic: Auto-Heal Allies",
-   CurrentValue = false,
-   Callback = function(Value)
-      getgenv().Config.AutoHealTeam = Value
-   end,
+   CurrentValue = getgenv().Config.AutoHealTeam,
+   Callback = function(Value) getgenv().Config.AutoHealTeam = Value end,
 })
-
--- Цикл поиска раненых союзников
-task.spawn(function()
-    while task.wait(1) do
-        if getgenv().Config.AutoHealTeam then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
-                    if p.Character.Humanoid.Health < 50 then
-                        local dist = (Char.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                        if dist < 15 then
-                            HealAlly(p.Character)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- [[ МОДУЛЬ 22: EXPLOIT STABILIZATION ]] --
-
--- Защита от кика за подозрительную активность (Anti-Cheat Bypass)
-local mt = getrawmetatable(game)
-local oldIndex = mt.__namecall
-setreadonly(mt, false)
-
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    
-    -- Блокируем отправку отчетов античита
-    if method == "FireServer" and (self.Name:lower():find("cheat") or self.Name:lower():find("detect")) then
-        return nil
-    end
-    
-    return oldIndex(self, unpack(args))
-end)
-setreadonly(mt, true)
-
--- [[ МОДУЛЬ 23: UI CUSTOMIZATION (THEME) ]] --
--- Делаем интерфейс уникальным
-Rayfield:Notify({
-    Title = "SYSTEM LOADED",
-    Content = "2000+ Lines Logic Initialized. All Modules Active.",
-    Duration = 15,
-    Image = 4483362458,
-})
-
--- Финальный бинд: Нажми "P" чтобы мгновенно телепортироваться в безопасную зону (высоко в небо)
-game:GetService("UserInputService").InputBegan:Connect(function(input, gpe)
-    if not gpe and input.KeyCode == Enum.KeyCode.P then
-        Char.HumanoidRootPart.CFrame = Char.HumanoidRootPart.CFrame * CFrame.new(0, 500, 0)
-        Notify("Panic", "Emergency Teleport to Sky!")
-    end
-end)
--- [[ МОДУЛЬ 24: MINIMAP RADAR (SENSE) ]] --
-
-local RadarEnabled = false
-local RadarFrame = Instance.new("Frame")
-local RadarPoint = Instance.new("Frame")
-
--- Создание UI радара
-local function CreateRadar()
-    local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-    RadarFrame.Name = "EntropyRadar"
-    RadarFrame.Parent = ScreenGui
-    RadarFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    RadarFrame.BorderSizePixel = 2
-    RadarFrame.Position = UDim2.new(0.05, 0, 0.7, 0)
-    RadarFrame.Size = UDim2.new(0, 150, 0, 150)
-    RadarFrame.Visible = false
-    
-    local LineX = Instance.new("Frame", RadarFrame)
-    LineX.Size = UDim2.new(1, 0, 0, 1)
-    LineX.Position = UDim2.new(0, 0, 0.5, 0)
-    LineX.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    
-    local LineY = Instance.new("Frame", RadarFrame)
-    LineY.Size = UDim2.new(0, 1, 1, 0)
-    LineY.Position = UDim2.new(0.5, 0, 0, 0)
-    LineY.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-end
-
-CreateRadar()
-
-VisualsTab:CreateToggle({
-   Name = "2D Minimap Radar",
-   CurrentValue = false,
-   Callback = function(Value)
-      RadarEnabled = Value
-      RadarFrame.Visible = Value
-   end,
-})
-
--- Логика отрисовки точек на радаре
-RunService.RenderStepped:Connect(function()
-    if RadarEnabled then
-        RadarFrame:ClearAllChildren() -- Очистка старых точек (упрощенно)
-        -- Перерисовываем осевые линии
-        local lx = Instance.new("Frame", RadarFrame); lx.Size = UDim2.new(1,0,0,1); lx.Position = UDim2.new(0,0,0.5,0)
-        local ly = Instance.new("Frame", RadarFrame); ly.Size = UDim2.new(0,1,1,0); ly.Position = UDim2.new(0.5,0,0,0)
-
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local relPos = (p.Character.HumanoidRootPart.Position - Char.HumanoidRootPart.Position)
-                local posX = 0.5 + (relPos.X / 500)
-                local posZ = 0.5 + (relPos.Z / 500)
-                
-                if posX > 0 and posX < 1 and posZ > 0 and posZ < 1 then
-                    local dot = Instance.new("Frame", RadarFrame)
-                    dot.Size = UDim2.new(0, 4, 0, 4)
-                    dot.Position = UDim2.new(posX, -2, posZ, -2)
-                    
-                    -- Цвет точки: Красный для убийц, Зеленый для выживших
-                    local isKiller = false
-                    for _, k in pairs(GameData.Killers) do if p.Name == k then isKiller = true end end
-                    dot.BackgroundColor3 = isKiller and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
-                end
-            end
-        end
-    end
-end)
-
--- [[ МОДУЛЬ 25: SERVER MANAGEMENT (HOPPER) ]] --
-
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
-
-SettingsTab:CreateButton({
-   Name = "Server Hop (Find New Lobby)",
-   Callback = function()
-       local Http = game:GetService("HttpService")
-       local TPS = game:GetService("TeleportService")
-       local Api = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
-       local function NextServer()
-           local Result = Http:JSONDecode(game:HttpGet(Api))
-           for _, server in pairs(Result.data) do
-               if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                   TPS:TeleportToPlaceInstance(game.PlaceId, server.id)
-               end
-           end
-       end
-       NextServer()
-   end,
-})
-
-SettingsTab:CreateButton({
-   Name = "Rejoin Current Server",
-   Callback = function()
-       game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId)
-   end,
-})
-
--- [[ МОДУЛЬ 26: FULL AUTO-FARM (GUEST 1337 MODE) ]] --
--- Совмещаем все функции для АФК-фарма монет
-
-getgenv().Config.MegaFarm = false
-
 AutoTab:CreateToggle({
-   Name = "ULTIMATE AUTO-FARM (Careful!)",
-   CurrentValue = false,
+   Name = "ULTIMATE AUTO-FARM (Combines all survival)",
+   CurrentValue = getgenv().Config.MegaFarm,
    Callback = function(Value)
       getgenv().Config.MegaFarm = Value
       getgenv().Config.AutoParry = Value
       getgenv().Config.AutoCola = Value
       getgenv().Config.AutoCleanse = Value
+      getgenv().Config.AutoFarmItems = Value
       Notify("Warning", "Mega Farm combines all survival modules.")
    end,
 })
 
--- [[ ФИНАЛЬНАЯ ПРОВЕРКА ЦЕЛОСТНОСТИ ]] --
-print("Entropy Forsaken Loaded: 2200+ Logical Connections Established.")
-Notify("System", "Script fully operational. Press K to toggle.")
+-- [ TAB: Killer Mode ]
+local KillerTab = Window:CreateTab("Killer Mode", 4483362458)
+KillerTab:CreateToggle({
+   Name = "Kill Aura (Hit Survivors)",
+   CurrentValue = getgenv().Config.KillAura,
+   Callback = function(Value) getgenv().Config.KillAura = Value end,
+})
+KillerTab:CreateSlider({
+   Name = "Aura Reach",
+   Range = {5, 50},
+   Increment = 1,
+   CurrentValue = getgenv().Config.AuraRange,
+   Callback = function(Value) getgenv().Config.AuraRange = Value end,
+})
 
--- Убираем лаги: удаляем старые эффекты
-task.spawn(function()
-    while task.wait(60) do
-        for _, v in pairs(workspace:GetChildren()) do
-            if v.Name == "EntropyHigh" or v.Name == "KillerHigh" then
-                v:Destroy()
-            end
-        end
-    end
-end)
--- [[ МОДУЛЬ 27: ADMIN DETECTOR & AUTO-LEAVE ]] --
-
-local Admins = {"OwnerName", "Moderator123"} -- Сюда можно вписать ники админов, если они известны
-getgenv().Config.AutoLeave = false
-
-local function CheckForAdmins()
-    for _, player in pairs(Players:GetPlayers()) do
-        -- Проверка по GroupId (самый надежный способ)
-        if player:GetRankInGroup(1234567) >= 100 or player:IsFriendsWith(25010023) then 
-            if getgenv().Config.AutoLeave then
-                LocalPlayer:Kick("Admin/Moderator detected: " .. player.Name)
-            else
-                Notify("CRITICAL", "Admin " .. player.Name .. " joined the game!")
-            end
-        end
-    end
-end
-
-Players.PlayerAdded:Connect(CheckForAdmins)
-
-SettingsTab:CreateToggle({
+-- [ TAB: Server Management ]
+local ServerTab = Window:CreateTab("Server", 4483362458)
+ServerTab:CreateButton({
+   Name = "Server Hop (Find New Lobby)",
+   Callback = function()
+       local Api = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+       local function NextServer()
+           local Result = HttpService:JSONDecode(game:HttpGet(Api))
+           for _, server in pairs(Result.data) do
+               if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                   TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
+                   return
+               end
+           end
+           Notify("Server Hop", "No new public servers found, trying again in a moment.", 4483345998)
+           task.wait(5)
+           NextServer() -- Recursive call to find a server
+       end
+       NextServer()
+   end,
+})
+ServerTab:CreateButton({
+   Name = "Rejoin Current Server",
+   Callback = function()
+       TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
+   end,
+})
+ServerTab:CreateToggle({
    Name = "Auto-Leave on Admin Join",
-   CurrentValue = false,
+   CurrentValue = getgenv().Config.AutoLeave,
+   Callback = function(Value) getgenv().Config.AutoLeave = Value end,
+})
+ServerTab:CreateInput({
+   Name = "Admin Names (Comma Separated)",
+   Placeholder = "Owner,Moderator,Dev",
+   CurrentValue = table.concat(getgenv().Config.AdminDetectNames, ","),
    Callback = function(Value)
-      getgenv().Config.AutoLeave = Value
+       getgenv().Config.AdminDetectNames = {}
+       for name in string.gmatch(Value, "[^,]+") do
+           table.insert(getgenv().Config.AdminDetectNames, name:gsub("^%s*", ""):gsub("%s*$", "")) -- Trim spaces
+       end
    end,
 })
 
--- [[ МОДУЛЬ 28: VARIABLE HIJACKER (DATA PEEKER) ]] --
 
-local DebugTab = Window:CreateTab("Server Data", 4483362458)
-
-DebugTab:CreateButton({
+-- [ TAB: Debug & Misc ]
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+MiscTab:CreateButton({
+   Name = "Instant Teleport to Exit (If Open)",
+   Callback = function()
+       local Exit = workspace:FindFirstChild("EscapeGate") or workspace:FindFirstChild("Exit")
+       if Exit then
+           RootPart.CFrame = Exit.CFrame * CFrame.new(0, 5, 0)
+           Notify("Escape", "Teleporting to Exit Gate!")
+       else
+           Notify("Error", "Exit Gate not found or not powered yet.")
+       end
+   end,
+})
+MiscTab:CreateButton({
+   Name = "Super FPS Boost",
+   Callback = function()
+       for _, v in pairs(game:GetDescendants()) do
+           if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+               v.Material = Enum.Material.SmoothPlastic
+           elseif v:IsA("Decal") or v:IsA("Texture") then
+               v.Transparency = 1
+           elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+               v.Enabled = false
+           end
+       end
+       setfpscap(999)
+       Notify("Performance", "Textures simplified, FPS unlocked.")
+   end,
+})
+MiscTab:CreateButton({
    Name = "Reveal Killer Identity (Early)",
    Callback = function()
        local KillerValue = game:GetService("ReplicatedStorage"):FindFirstChild("CurrentKiller")
@@ -924,65 +537,366 @@ DebugTab:CreateButton({
    end,
 })
 
--- [[ МОДУЛЬ 29: PERFORMANCE BOOSTER (FPS) ]] --
 
-MiscTab:CreateButton({
-   Name = "Super FPS Boost",
-   Callback = function()
-       for _, v in pairs(game:GetDescendants()) do
-           if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
-               v.Material = Enum.Material.SmoothPlastic
-           elseif v:IsA("Decal") or v:IsA("Texture") then
-               v:Destroy()
-           elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-               v.Enabled = false
-           end
-       end
-       setfpscap(999)
-       Notify("Performance", "Textures simplified, FPS unlocked.")
-   end,
-})
+-- //////////////////////////////////////////////////////////////////////////////////////////////
+-- ////////////////////////////////// CORE LOOP AND GAME MECHANICS //////////////////////////////
+-- //////////////////////////////////////////////////////////////////////////////////////////////
 
--- [[ МОДУЛЬ 30: ХОТКЕИ (QUICK ACTIONS) ]] --
+-- Heartbeat Loop for consistent updates (Combat, ESP, Stamina/Oxygen)
+RunService.Heartbeat:Connect(function()
+    if not Char or not RootPart or not Humanoid then return end
 
-local UIS = game:GetService("UserInputService")
-
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    
-    -- Мгновенная Кола на 'V'
-    if input.KeyCode == Enum.KeyCode.V then
-        local Cola = LocalPlayer.Backpack:FindFirstChild("BloxyCola") or Char:FindFirstChild("BloxyCola")
-        if Cola then
-            Cola.Parent = Char
-            Cola:Activate()
-            task.wait(0.2)
-            Cola.Parent = LocalPlayer.Backpack
+    -- Infinite Stamina/Oxygen (Metamethod Hook for attributes)
+    if getgenv().Config.InfiniteStamina then
+        local mt = getrawmetatable(Humanoid)
+        if mt then
+            setreadonly(mt, false)
+            local oldIndex = mt.__index
+            mt.__index = newcclosure(function(t, k)
+                if k == "Stamina" or k == "Oxygen" then return 100 end
+                return oldIndex(t, k)
+            end)
+            setreadonly(mt, true)
         end
     end
-    
-    -- ТП к ближайшему выжившему на 'T' (для медика)
-    if input.KeyCode == Enum.KeyCode.T then
+
+    -- NoClip Collision Management
+    if getgenv().Config.NoClip then
+        for _, part in pairs(Char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide == true then
+                part.CanCollide = false
+            end
+        end
+    else
+        for _, part in pairs(Char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+
+    -- ESP Visuals (Optimized for performance)
+    ClearESP() -- Clear previous labels for fresh redraw
+    if getgenv().Config.ESP_Enabled then
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                Char.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                break
+                local targetHumanoid = p.Character:FindFirstChild("Humanoid")
+                if not targetHumanoid or targetHumanoid.Health <= 0 then continue end -- Skip dead players
+
+                local dist = (RootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                
+                local isKiller = false
+                for _, kName in pairs(GameData.Killers) do
+                    if p.Name:lower():find(kName:lower()) then isKiller = true; break end
+                end
+
+                if getgenv().Config.Killer_ESP and isKiller then
+                    CreateESP(
+                        p.Character.HumanoidRootPart,
+                        getgenv().Config.KillerESPColor,
+                        p.Name,
+                        dist,
+                        getgenv().Config.ShowKillerNames,
+                        getgenv().Config.ShowKillerDistance
+                    )
+                elseif getgenv().Config.Survivor_ESP and not isKiller then
+                    CreateESP(
+                        p.Character.HumanoidRootPart,
+                        getgenv().Config.SurvivorESPColor,
+                        p.Name,
+                        dist,
+                        getgenv().Config.ShowSurvivorNames,
+                        getgenv().Config.ShowSurvivorDistance
+                    )
+                end
+            end
+        end
+
+        -- Item ESP (Iterate through workspace)
+        if getgenv().Config.Item_ESP then
+            for _, item in pairs(workspace:GetDescendants()) do
+                local isGameItem = false
+                local itemName = item.Name
+                for _, category in pairs(GameData.Items) do
+                    for _, name in pairs(category) do
+                        if itemName == name then isGameItem = true; break end
+                    end
+                    if isGameItem then break end
+                end
+                
+                if isGameItem and item:IsA("BasePart") then
+                    local dist = (RootPart.Position - item.Position).Magnitude
+                    if dist < 300 then -- Only show items within a reasonable range
+                        CreateESP(
+                            item,
+                            getgenv().Config.ItemESPColor,
+                            itemName,
+                            dist,
+                            getgenv().Config.ShowItemNames,
+                            getgenv().Config.ShowItemDistance
+                        )
+                    end
+                end
+            end
+        end
+    end
+
+    -- Kill Aura (Killer Mode)
+    if getgenv().Config.KillAura and (CurrentClass == "Killer" or table.find(GameData.Killers, CurrentClass)) then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHumanoid = p.Character:FindFirstChild("Humanoid")
+                if not targetHumanoid or targetHumanoid.Health <= 0 then continue end
+                
+                local isTargetKiller = false
+                for _, kName in pairs(GameData.Killers) do
+                    if p.Name:lower():find(kName:lower()) then isTargetKiller = true; break end
+                end
+
+                if not isTargetKiller then
+                    local dist = (RootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                    if dist <= getgenv().Config.AuraRange then
+                        local Weapon = Char:FindFirstChildOfClass("Tool")
+                        if Weapon and Weapon:IsA("Tool") then
+                            Weapon:Activate() -- Attempt to activate weapon to trigger attack
+                            -- If specific remote is known:
+                            -- game:GetService("ReplicatedStorage").Remotes.AttackEvent:FireServer(p.Character.HumanoidRootPart)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Auto-Parry (Guest 1337)
+    if getgenv().Config.AutoParry and CurrentClass == "Guest 1337" then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHumanoid = p.Character:FindFirstChild("Humanoid")
+                if not targetHumanoid or targetHumanoid.Health <= 0 then continue end
+                
+                local isKiller = false
+                for _, kName in pairs(GameData.Killers) do
+                    if p.Name:lower():find(kName:lower()) then isKiller = true; break end
+                end
+
+                if isKiller then
+                    local dist = (RootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                    if dist < 15 then
+                        local anims = p.Character.Humanoid:GetPlayingAnimationTracks()
+                        for _, a in pairs(anims) do
+                            if a.Name:lower():find("attack") or a.Name:lower():find("swing") then
+                                game:GetService("ReplicatedStorage").Remotes.BlockEvent:FireServer(true)
+                                task.wait(0.1)
+                                game:GetService("ReplicatedStorage").Remotes.PunchEvent:FireServer()
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Auto-Heal Allies (Medic)
+    if getgenv().Config.AutoHealTeam and CurrentClass == "Medic" then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
+                local targetHumanoid = p.Character:FindFirstChild("Humanoid")
+                if targetHumanoid and targetHumanoid.Health < targetHumanoid.MaxHealth * 0.5 then -- Heal if below 50% HP
+                    local dist = (RootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                    if dist < 15 then
+                        local Medkit = LocalPlayer.Backpack:FindFirstChild("Medkit") or Char:FindFirstChild("Medkit")
+                        if Medkit then
+                            Humanoid:EquipTool(Medkit)
+                            task.wait(0.05)
+                            game:GetService("ReplicatedStorage").Remotes.HealEvent:FireServer(p.Character)
+                            task.wait(0.5) -- Cooldown for healing
+                        end
+                    end
+                end
             end
         end
     end
 end)
 
--- [[ FINAL BOOT ]] --
+-- RenderStepped for FOV Circle and UI updates
+RunService.RenderStepped:Connect(function()
+    if getgenv().Config.ShowFov then
+        FovCircle.Position = UIS:GetMouseLocation()
+    end
+end)
 
--- Очистка консоли для чистоты
-if setfpscap then setfpscap(144) end
-print([[ 
-  ______ _   _ _______ _____   ____  _______     __
- |  ____| \ | |__   __|  __ \ / __ \|  __ \ \   / /
- | |__  |  \| |  | |  | |__) | |  | | |__) \ \_/ / 
- |  __| | . ` |  | |  |  _  /| |  | |  ___/ \   /  
- | |____| |\  |  | |  | | \ \| |__| | |      | |   
- |______|_| \_|  |_|  |_|  \_\\____/|_|      |_|   
-                                                   ]])
+-- //////////////////////////////////////////////////////////////////////////////////////////////
+-- ////////////////////////////////// OTHER GAME MECHANICS (TASK.SPAWN) /////////////////////////
+-- //////////////////////////////////////////////////////////////////////////////////////////////
 
-Notify("COMPLETE", "Entropy Script: 2500+ Lines of Logic Ready. Good luck, Survivor.")
+-- Auto-Cola (Stamina Regeneration)
+task.spawn(function()
+    while task.wait(0.5) do
+        if getgenv().Config.AutoCola then
+            -- Check for actual stamina attribute if infinite stamina is off
+            local stamina = Char:GetAttribute("Stamina") or 100
+            if stamina < 30 then
+                local cola = LocalPlayer.Backpack:FindFirstChild("BloxyCola") or Char:FindFirstChild("BloxyCola")
+                if cola then
+                    Humanoid:EquipTool(cola)
+                    task.wait(0.1)
+                    -- game:GetService("ReplicatedStorage").Remotes.UseItem:FireServer("BloxyCola") -- Example remote if available
+                    cola.Parent = LocalPlayer.Backpack -- Return to backpack to prevent tool-related issues
+                end
+            end
+        end
+    end
+end)
+
+-- Auto-Cleanse (Anti-Debuff)
+task.spawn(function()
+    while task.wait(0.1) do
+        if getgenv().Config.AutoCleanse then
+            for _, effect in pairs(Char:GetChildren()) do
+                if (effect.Name:lower():find("infection") or effect.Name:lower():find("glitch")) and effect:IsA("Script") then
+                    local Medkit = LocalPlayer.Backpack:FindFirstChild("Medkit") or Char:FindFirstChild("Medkit")
+                    if Medkit then
+                        Humanoid:EquipTool(Medkit)
+                        task.wait(0.1)
+                        -- game:GetService("ReplicatedStorage").Remotes.SelfAction:FireServer("Cleanse")
+                        -- Or activate medkit to remove debuff
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Auto-Farm Items (Proximity Interact)
+task.spawn(function()
+    while task.wait(0.3) do
+        if getgenv().Config.AutoFarmItems then
+            for _, obj in pairs(workspace:GetDescendants()) do -- Use GetDescendants for nested items
+                if obj:IsA("BasePart") then
+                    local prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
+                    if prompt then
+                        local dist = (RootPart.Position - obj.Position).Magnitude
+                        if dist < 12 then
+                            local isGameItem = false
+                            for _, category in pairs(GameData.Items) do
+                                for _, name in pairs(category) do
+                                    if obj.Name == name then isGame
+                                 -- [[ МОДУЛЬ 31: FINISHING AUTO-FARM & INTERACTION ]] --
+
+task.spawn(function()
+    while task.wait(0.3) do
+        if getgenv().Config.AutoFarmItems then
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    -- Поиск промптов или клик-детекторов
+                    local prompt = obj:FindFirstChildOfClass("ProximityPrompt") 
+                    local click = obj:FindFirstChildOfClass("ClickDetector")
+                    
+                    if (prompt or click) then
+                        local dist = (RootPart.Position - obj.Position).Magnitude
+                        if dist < 15 then
+                            -- Проверка, является ли объект полезным лутом
+                            local isLoot = false
+                            for _, cat in pairs(GameData.Items) do
+                                for _, name in pairs(cat) do
+                                    if obj.Name == name then isLoot = true break end
+                                end
+                            end
+                            
+                            if isLoot then
+                                if prompt then fireproximityprompt(prompt) end
+                                if click then fireclickdetector(click) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- [[ МОДУЛЬ 32: GLOBAL METAMETHOD HOOKS (THE NERVE SYSTEM) ]] --
+-- Это "сердце" чита, которое подменяет данные игры на лету
+
+local rawMT = getrawmetatable(game)
+local oldNamecall = rawMT.__namecall
+local oldIndex = rawMT.__index
+setreadonly(rawMT, false)
+
+rawMT.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    -- Silent Aim Logic (Перехват бросков)
+    if getgenv().Config.SilentAim and method == "FireServer" and (self.Name:find("Throw") or self.Name:find("Shoot")) then
+        local target = GetClosestKiller() -- Функция из предыдущего модуля
+        if target then
+            args[1] = target.Position
+            return oldNamecall(self, unpack(args))
+        end
+    end
+
+    -- Блокировка репортов анти-чита
+    if method == "FireServer" and (self.Name:find("Detection") or self.Name:find("Ban")) then
+        return nil
+    end
+
+    return oldNamecall(self, unpack(args))
+end)
+
+rawMT.__index = newcclosure(function(t, k)
+    -- Бесконечная стамина и кислород через хук свойств
+    if getgenv().Config.InfiniteStamina and (k == "Stamina" or k == "Oxygen") then
+        return 100
+    end
+    -- WalkSpeed Bypass (если игра пытается принудительно вернуть 16)
+    if k == "WalkSpeed" and getgenv().Config.WalkSpeed > 16 then
+        return getgenv().Config.WalkSpeed
+    end
+    return oldIndex(t, k)
+end)
+
+setreadonly(rawMT, true)
+
+-- [[ МОДУЛЬ 33: ГОРЯЧИЕ КЛАВИШИ И ПАСХАЛКИ ]] --
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    -- Быстрый выход (Emergency Exit)
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        Rayfield:Destroy()
+        Notify("System", "Script Terminated Safely.")
+    end
+end)
+
+-- [[ FINAL BRANDING & INITIALIZATION ]] --
+
+-- Установка начальных параметров персонажа
+task.spawn(function()
+    while task.wait(1) do
+        if Char and Humanoid then
+            Humanoid.WalkSpeed = getgenv().Config.WalkSpeed
+            Humanoid.JumpPower = getgenv().Config.JumpPower
+        end
+    end
+end)
+
+-- Вывод в консоль и уведомление
+print("--------------------------------------------------")
+print("Entropy Forsaken v2.1 Loaded Successfully!")
+print("By Gemini AI, ChromeTech, and my shattered nerves.")
+print("Enjoy your God-mode experience.")
+print("--------------------------------------------------")
+
+Rayfield:LoadConfiguration() -- Загрузка сохраненных настроек
+
+Notify(
+    "SYSTEM READY", 
+    "Entropy Forsaken v2.1 Activated.\nCreated by Gemini, ChromeTech and my nerves.", 
+    4483362458
+)
+
+-- Авто-детект класса при старте
+local detected = DetectClass()
+Notify("Class Detected", "You are playing as: " .. detected)
