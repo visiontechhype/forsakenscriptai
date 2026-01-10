@@ -1,13 +1,4 @@
---[[
-    FORSAKEN ULTIMATE FRAMEWORK
-    Module 9: Advanced Survivor Automation
-    Version: 9.1.0 | Build: Forsaken_Ultimate_Framework
-    Description: Complete rewrite with safety systems
-]]--
 
--- ============================================================================
--- SECTION 1: SAFETY CORE SYSTEM
--- ============================================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SafetyCore = {
     Enabled = true,
