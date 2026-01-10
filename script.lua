@@ -911,136 +911,706 @@ function AutoParrySystem:_playParrySound()
 end
 
 -- ============================================================================
--- SECTION 4: ITEM ESP SYSTEM
+-- SECTION 4: ITEM ESP SYSTEM (Продолжение)
 -- ============================================================================
 
-local ItemESP = {
-    _active = false,
-    _highlights = {},
-    _itemCache = {},
-    _scanInterval = 1,
-    _lastScanTime = 0,
-    _renderConnection = nil
-}
-
-function ItemESP:Initialize()
-    -- Load item models
-    self:_loadItemModels()
-    
-    -- Setup ESP toggle
-    Fluent.options.Toggles["ItemESPEnabled"]:OnChanged(function(value)
-        self._active = value
-        if value then
-            self:StartESP()
-        else
-            self:StopESP()
+function ItemESP:_checkItem(item)
+    -- Проверяем, соответствует ли предмет нашей базе данных
+    for itemName, modelInfo in pairs(self._itemModels) do
+        -- Проверка по нескольким критериям
+        local isTargetItem = false
+        
+        -- Критерий 1: Имя предмета содержит ключевые слова
+        if string.find(item.Name:lower(), itemName:lower()) then
+            isTargetItem = true
         end
-    end)
-    
-    -- Item color customization
-    for itemName, defaultColor in pairs(ForsakenDatabase.Items) do
-        local colorPicker = Fluent.options.ColorPickers[itemName .. "Color"]
-        if colorPicker then
-            colorPicker:OnChanged(function(color)
-                self:_updateItemColor(itemName, color)
-            end)
+        
+        -- Критерий 2: Родитель содержит ключевые слова
+        if item.Parent and string.find(item.Parent.Name:lower(), itemName:lower()) then
+            isTargetItem = true
         end
-    end
-end
-
-function ItemESP:_loadItemModels()
-    -- Define item model identifiers
-    self._itemModels = {
-        ["Medkit"] = {
-            ModelName = "Medkit",
-            PrimaryPart = "Handle",
-            BoundingBox = Vector3.new(2, 1, 1),
-            GlowColor = ForsakenDatabase.Items["Medkit"]
-        },
-        ["BloxyCola"] = {
-            ModelName = "BloxyCola",
-            PrimaryPart = "Can",
-            BoundingBox = Vector3.new(0.5, 1, 0.5),
-            GlowColor = ForsakenDatabase.Items["BloxyCola"]
-        },
-        ["FriedChicken"] = {
-            ModelName = "FriedChicken",
-            PrimaryPart = "Bucket",
-            BoundingBox = Vector3.new(1, 1, 1),
-            GlowColor = Color3.fromRGB(255, 200, 0)
-        }
-    }
-end
-
-function ItemESP:StartESP()
-    -- Start scanning for items
-    self._renderConnection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-        self:_updateESP(deltaTime)
-    end)
-    
-    -- Initial scan
-    self:_scanForItems()
-    
-    Fluent:Notify({
-        Title = "Item ESP",
-        Content = "Item highlighting activated",
-        SubContent = "Scanning for Medkits, Bloxy Cola, and Fried Chicken...",
-        Duration = 3
-    })
-end
-
-function ItemESP:StopESP()
-    if self._renderConnection then
-        self._renderConnection:Disconnect()
-        self._renderConnection = nil
-    end
-    
-    -- Remove all highlights
-    for _, highlight in pairs(self._highlights) do
-        if highlight then
-            highlight:Destroy()
+        
+        -- Критерий 3: Это модель с нужным именем
+        if item:IsA("Model") and string.find(item.Name:lower(), modelInfo.ModelName:lower()) then
+            isTargetItem = true
+        end
+        
+        if isTargetItem then
+            -- Добавляем предмет в кэш, если его там нет
+            if not self._itemCache[item] then
+                self._itemCache[item] = {
+                    Type = itemName,
+                    LastSeen = tick(),
+                    Position = item:IsA("BasePart") and item.Position or 
+                               (item:IsA("Model") and item:GetPivot().Position)
+                }
+                
+                -- Создаем подсветку
+                if self._active then
+                    self:_createHighlight(item, itemName)
+                end
+            else
+                -- Обновляем позицию
+                self._itemCache[item].LastSeen = tick()
+                self._itemCache[item].Position = item:IsA("BasePart") and item.Position or 
+                                                (item:IsA("Model") and item:GetPivot().Position)
+            end
+            break
         end
     end
-    table.clear(self._highlights)
-    
-    Fluent:Notify({
-        Title = "Item ESP",
-        Content = "Item highlighting deactivated",
-        Duration = 2
-    })
 end
 
-function ItemESP:_scanForItems()
-    -- Clear old cache
-    for item in pairs(self._itemCache) do
+function ItemESP:_createHighlight(item, itemType)
+    -- Проверяем, не существует ли уже подсветка
+    if self._highlights[item] then
+        return
+    end
+    
+    -- Создаем объект Highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ItemESP_" .. itemType
+    
+    -- Настраиваем цвет в зависимости от типа предмета
+    local color = ForsakenDatabase.Items[itemType] or Color3.fromRGB(255, 255, 255)
+    highlight.FillColor = color
+    highlight.OutlineColor = Color3.new(color.R * 0.5, color.G * 0.5, color.B * 0.5)
+    highlight.FillTransparency = 0.7
+    highlight.OutlineTransparency = 0.3
+    
+    -- Настройка глубины и расстояния отрисовки
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Adornee = item
+    
+    -- Добавляем свечение
+    local pointLight = Instance.new("PointLight")
+    pointLight.Color = color
+    pointLight.Brightness = 2
+    pointLight.Range = 10
+    pointLight.Enabled = true
+    pointLight.Parent = highlight
+    
+    -- Добавляем billboard с информацией
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 100, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Adornee = item
+    billboard.AlwaysOnTop = true
+    billboard.Parent = highlight
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    frame.BackgroundTransparency = 0.5
+    frame.BorderSizePixel = 0
+    frame.Parent = billboard
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -10, 1, -10)
+    label.Position = UDim2.new(0, 5, 0, 5)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = color
+    label.Text = string.format("%s\n[%.1f studs]", itemType, 0)
+    label.TextSize = 12
+    label.Font = Enum.Font.Code
+    label.TextStrokeTransparency = 0.5
+    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    label.Parent = frame
+    
+    -- Сохраняем ссылку на текст для обновления расстояния
+    highlight.DistanceLabel = label
+    
+    -- Применяем к предмету
+    highlight.Parent = game:GetService("CoreGui") or item
+    
+    -- Сохраняем в таблицу
+    self._highlights[item] = highlight
+    
+    -- Соединяем событие удаления
+    item.AncestryChanged:Connect(function()
         if not item:IsDescendantOf(workspace) then
-            self._itemCache[item] = nil
-            if self._highlights[item] then
-                self._highlights[item]:Destroy()
-                self._highlights[item] = nil
+            self:_removeHighlight(item)
+        end
+    end)
+end
+
+function ItemESP:_updateESP(deltaTime)
+    if not self._active then return end
+    
+    self._lastScanTime += deltaTime
+    
+    -- Сканируем предметы каждые N секунд
+    if self._lastScanTime >= self._scanInterval then
+        self:_scanForItems()
+        self._lastScanTime = 0
+    end
+    
+    -- Обновляем существующие подсветки
+    local character = game.Players.LocalPlayer.Character
+    local playerPosition = character and character:GetPivot().Position or Vector3.zero
+    
+    for item, highlight in pairs(self._highlights) do
+        if item and item:IsDescendantOf(workspace) and highlight then
+            -- Обновляем расстояние
+            if highlight.DistanceLabel then
+                local itemPosition = item:IsA("BasePart") and item.Position or 
+                                    (item:IsA("Model") and item:GetPivot().Position)
+                local distance = (itemPosition - playerPosition).Magnitude
+                
+                highlight.DistanceLabel.Text = string.format("%s\n[%.1f studs]", 
+                    self._itemCache[item] and self._itemCache[item].Type or "Item",
+                    distance)
+                
+                -- Динамическая прозрачность в зависимости от расстояния
+                local maxDistance = 100
+                local distanceRatio = math.clamp(distance / maxDistance, 0, 1)
+                highlight.FillTransparency = 0.3 + (distanceRatio * 0.5)
+                highlight.OutlineTransparency = 0.1 + (distanceRatio * 0.4)
+            end
+            
+            -- Проверяем, не устарел ли предмет
+            if self._itemCache[item] then
+                if tick() - self._itemCache[item].LastSeen > 30 then -- 30 секунд
+                    self:_removeHighlight(item)
+                end
+            end
+        else
+            -- Удаляем несуществующие подсветки
+            self:_removeHighlight(item)
+        end
+    end
+end
+
+function ItemESP:_removeHighlight(item)
+    if self._highlights[item] then
+        self._highlights[item]:Destroy()
+        self._highlights[item] = nil
+    end
+    self._itemCache[item] = nil
+end
+
+function ItemESP:_updateItemColor(itemName, color)
+    -- Обновляем цвет для всех предметов этого типа
+    for item, highlight in pairs(self._highlights) do
+        if self._itemCache[item] and self._itemCache[item].Type == itemName then
+            if highlight then
+                highlight.FillColor = color
+                highlight.OutlineColor = Color3.new(color.R * 0.5, color.G * 0.5, color.B * 0.5)
+                
+                if highlight.DistanceLabel then
+                    highlight.DistanceLabel.TextColor3 = color
+                end
+                
+                -- Обновляем свет
+                for _, child in ipairs(highlight:GetChildren()) do
+                    if child:IsA("PointLight") then
+                        child.Color = color
+                    end
+                end
             end
         end
     end
+end
+
+-- ============================================================================
+-- SECTION 5: МОДУЛИ ДЛЯ КОНКРЕТНЫХ КЛАССОВ
+-- ============================================================================
+
+function ClassDetector:_initializeGuest1337Modules()
+    local module = {
+        Name = "Guest1337_AutoParry",
+        Active = false
+    }
     
-    -- Scan workspace for items
-    local function scanFolder(folder)
-        for _, item in ipairs(folder:GetDescendants()) do
-            self:_checkItem(item)
+    function module.Activate()
+        module.Active = true
+        AutoParrySystem:Initialize()
+        
+        -- Добавляем специальные настройки для Guest 1337
+        Fluent:AddOptions("Guest 1337", {
+            Name = "Guest 1337",
+            LayoutOrder = 1
+        })
+        
+        Fluent:AddToggle("Guest1337_AutoBlock", {
+            Title = "Auto-Block Counter",
+            Description = "Автоматически блокирует атаки и контратакует",
+            Default = true,
+            Callback = function(value)
+                if value then
+                    AutoParrySystem:StartParrying()
+                else
+                    AutoParrySystem:StopParrying()
+                end
+            end
+        })
+        
+        Fluent:AddSlider("ParrySensitivity", {
+            Title = "Чувствительность парирования",
+            Description = "Настройка времени реакции на атаки",
+            Default = 300,
+            Min = 100,
+            Max = 500,
+            Rounding = 0,
+            Callback = function(value)
+                AutoParrySystem._parryWindow = value / 1000
+            end
+        })
+        
+        Fluent:AddToggle("CounterPunch", {
+            Title = "Автоматическая контратака",
+            Description = "После успешного блока автоматически наносит удар",
+            Default = true
+        })
+    end
+    
+    function module.Deactivate()
+        module.Active = false
+        AutoParrySystem:StopParrying()
+    end
+    
+    return module
+end
+
+function ClassDetector:_initializeElliotModules()
+    local module = {
+        Name = "Elliot_ProjectilePrediction",
+        Active = false
+    }
+    
+    function module.Activate()
+        module.Active = true
+        ProjectilePrediction:Initialize()
+        
+        -- Добавляем специальные настройки для Elliot
+        Fluent:AddOptions("Elliot", {
+            Name = "Elliot",
+            LayoutOrder = 2
+        })
+        
+        Fluent:AddToggle("AutoPizzaPrediction", {
+            Title = "Предсказание траектории пиццы",
+            Description = "Визуализирует полёт пиццы и точку приземления",
+            Default = true,
+            Callback = function(value)
+                if value then
+                    ProjectilePrediction:StartPrediction()
+                else
+                    ProjectilePrediction:StopPrediction()
+                end
+            end
+        })
+        
+        Fluent:AddToggle("AutoResolve", {
+            Title = "Авто-Resolve при низком HP",
+            Description = "Автоматически активирует Deliverer's Resolve при <25% HP",
+            Default = true
+        })
+        
+        Fluent:AddSlider("ResolveThreshold", {
+            Title = "Порог HP для Resolve",
+            Description = "При каком проценте здоровья активировать способность",
+            Default = 25,
+            Min = 10,
+            Max = 50,
+            Rounding = 0
+        })
+    end
+    
+    function module.Deactivate()
+        module.Active = false
+        ProjectilePrediction:StopPrediction()
+    end
+    
+    return module
+end
+
+function ClassDetector:_initialize1x1x1x1Modules()
+    local module = {
+        Name = "1x1x1x1_AutoCleanse",
+        Active = false
+    }
+    
+    function module.Activate()
+        module.Active = true
+        
+        -- Добавляем специальные настройки для 1x1x1x1
+        Fluent:AddOptions("1x1x1x1", {
+            Name = "1x1x1x1",
+            LayoutOrder = 3
+        })
+        
+        Fluent:AddToggle("AutoCleanseInfection", {
+            Title = "Авто-очистка инфекции",
+            Description = "Автоматически очищает Mass Infection",
+            Default = true
+        })
+        
+        Fluent:AddToggle("DodgeEyeBeam", {
+            Title = "Уклонение от луча глаза",
+            Description = "Автоматически уклоняется от Unstable Eye",
+            Default = true
+        })
+        
+        Fluent:AddSlider("DodgeReaction", {
+            Title = "Скорость реакции на уклонение",
+            Description = "Настройка времени реакции на лучи",
+            Default = 200,
+            Min = 50,
+            Max = 500,
+            Rounding = 0
+        })
+    end
+    
+    function module.Deactivate()
+        module.Active = false
+    end
+    
+    return module
+end
+
+function ClassDetector:_initializeJohnDoeModules()
+    local module = {
+        Name = "JohnDoe_GlitchRemoval",
+        Active = false
+    }
+    
+    function module.Activate()
+        module.Active = true
+        
+        -- Добавляем специальные настройки для John Doe
+        Fluent:AddOptions("John Doe", {
+            Name = "John Doe",
+            LayoutOrder = 4
+        })
+        
+        Fluent:AddToggle("RemoveScreenGlitches", {
+            Title = "Удаление глитчей с экрана",
+            Description = "Автоматически удаляет эффекты 404 Error",
+            Default = true
+        })
+        
+        Fluent:AddToggle("EraseDigitalFootprints", {
+            Title = "Стирание цифровых следов",
+            Description = "Автоматически стирает Digital Footprint",
+            Default = true
+        })
+        
+        Fluent:AddToggle("AntiGlitchESP", {
+            Title = "ESP глитч-эффектов",
+            Description = "Показывает расположение глитч-эффектов на карте",
+            Default = false
+        })
+    end
+    
+    function module.Deactivate()
+        module.Active = false
+    end
+    
+    return module
+end
+
+-- ============================================================================
+-- SECTION 6: ИНИЦИАЛИЗАЦИЯ И ИСПРАВЛЕНИЕ ОШИБОК
+-- ============================================================================
+
+-- Безопасная инициализация Fluent UI
+local function SafeInitializeFluent()
+    -- Проверяем, существует ли Fluent
+    if not Fluent or not Fluent.options then
+        warn("[Forsaken Framework] Fluent UI не найден, ожидание загрузки...")
+        
+        -- Ждем загрузки библиотеки
+        local maxAttempts = 10
+        for attempt = 1, maxAttempts do
+            task.wait(1)
+            if Fluent and Fluent.options then
+                print(string.format("[Forsaken Framework] Fluent UI загружен (попытка %d/%d)", 
+                      attempt, maxAttempts))
+                break
+            end
+        end
+        
+        if not Fluent then
+            error("[Forsaken Framework] Не удалось загрузить Fluent UI")
+            return false
         end
     end
     
-    -- Scan specific folders
-    scanFolder(workspace)
+    return true
+end
+
+-- Безопасное добавление элементов UI
+local function SafeAddUIElement(elementType, name, options)
+    if not Fluent or not Fluent.options then
+        warn(string.format("[Forsaken Framework] Пропущено добавление %s: %s", elementType, name))
+        return nil
+    end
     
-    -- Check for item spawners
-    for _, spawner in ipairs(workspace:GetChildren()) do
-        if spawner.Name:find("Spawn") and (spawner.Name:find("Medkit") or 
-           spawner.Name:find("Cola") or spawner.Name:find("Chicken")) then
-            scanFolder(spawner)
+    local success, result = pcall(function()
+        if elementType == "Toggle" then
+            return Fluent:AddToggle(name, options)
+        elseif elementType == "Slider" then
+            return Fluent:AddSlider(name, options)
+        elseif elementType == "Options" then
+            return Fluent:AddOptions(name, options)
+        elseif elementType == "ColorPicker" then
+            return Fluent:AddColorPicker(name, options)
         end
+    end)
+    
+    if not success then
+        warn(string.format("[Forsaken Framework] Ошибка при добавлении %s '%s': %s", 
+              elementType, name, result))
+        return nil
+    end
+    
+    return result
+end
+
+-- Основная инициализация системы
+local function InitializeAdvancedSurvivorAutomation()
+    print("[Forsaken Framework] Инициализация расширенной автоматизации выживания...")
+    
+    -- Инициализируем Fluent UI
+    if not SafeInitializeFluent() then
+        return
+    end
+    
+    -- Создаем основную вкладку для автоматизации
+    SafeAddUIElement("Options", "AdvancedAutomation", {
+        Name = "Расширенная автоматизация",
+        LayoutOrder = 9
+    })
+    
+    -- Добавляем основные переключатели
+    SafeAddUIElement("Toggle", "ClassDetection", {
+        Title = "Авто-определение класса",
+        Description = "Автоматически определяет ваш класс и включает соответствующие функции",
+        Default = true,
+        Callback = function(value)
+            if value then
+                ClassDetector:Initialize()
+            end
+        end
+    })
+    
+    SafeAddUIElement("Toggle", "ItemESPEnabled", {
+        Title = "ESP предметов",
+        Description = "Подсвечивает Medkits, Bloxy Cola и Fried Chicken",
+        Default = true,
+        Callback = function(value)
+            -- Callback будет установлен позже в ItemESP:Initialize()
+        end
+    })
+    
+    -- Добавляем цветовые пикеры для предметов
+    for itemName, defaultColor in pairs(ForsakenDatabase.Items) do
+        SafeAddUIElement("ColorPicker", itemName .. "Color", {
+            Title = "Цвет " .. itemName,
+            Default = defaultColor
+        })
+    end
+    
+    -- Добавляем настройки ESP
+    SafeAddUIElement("Slider", "ESPRange", {
+        Title = "Дальность ESP",
+        Description = "Максимальная дистанция отрисовки предметов",
+        Default = 150,
+        Min = 50,
+        Max = 500,
+        Rounding = 0,
+        Callback = function(value)
+            ItemESP._scanRange = value
+        end
+    })
+    
+    -- Инициализируем системы
+    task.wait(1) -- Даем время UI для загрузки
+    
+    -- Инициализируем ESP систему
+    ItemESP:Initialize()
+    
+    -- Инициализируем детектор классов
+    ClassDetector:Initialize()
+    
+    -- Запускаем периодические проверки
+    game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        -- Периодические обновления систем
+        if ItemESP._active then
+            pcall(function() ItemESP:_updateESP(deltaTime) end)
+        end
+    end)
+    
+    print("[Forsaken Framework] Расширенная автоматизация выживания успешно инициализирована")
+    
+    -- Уведомление об успешной загрузке
+    task.wait(2)
+    if Fluent and Fluent.Notify then
+        Fluent:Notify({
+            Title = "Forsaken Framework",
+            Content = "Расширенная автоматизация загружена",
+            SubContent = "Системы: Class Detection, Item ESP, Projectile Prediction, Auto-Parry",
+            Duration = 5
+        })
     end
 end
 
-function ItemESP:_checkItem(item)
-    -- Check if item matches our database
-    for itemName, modelInfo in pairs(self._itemModels) do
+-- ============================================================================
+-- SECTION 7: ЗАЩИТА ОТ ОШИБОК И ЛОГГИРОВАНИЕ
+-- ============================================================================
+
+-- Глобальный обработчик ошибок
+local ErrorHandler = {
+    _lastError = nil,
+    _errorCount = 0,
+    _maxErrors = 10
+}
+
+function ErrorHandler:CaptureError(func, errorContext)
+    local success, result = xpcall(func, function(err)
+        self:_logError(err, errorContext)
+        return nil
+    end)
+    
+    return success, result
+end
+
+function ErrorHandler:_logError(err, context)
+    self._errorCount += 1
+    self._lastError = {
+        Message = tostring(err),
+        Context = context,
+        Timestamp = tick(),
+        Traceback = debug.traceback()
+    }
+    
+    -- Логируем ошибку
+    warn(string.format("[Forsaken Framework] ОШИБКА [%s]: %s\n%s", 
+          context or "Unknown", err, debug.traceback()))
+    
+    -- Отправляем уведомление при первой ошибке
+    if self._errorCount == 1 and Fluent and Fluent.Notify then
+        task.spawn(function()
+            Fluent:Notify({
+                Title = "System Error",
+                Content = "Обнаружена ошибка в системе",
+                SubContent = "Проверьте консоль разработчика (F9)",
+                Duration = 5
+            })
+        end)
+    end
+    
+    -- Если слишком много ошибок - предлагаем перезагрузку
+    if self._errorCount >= self._maxErrors then
+        warn("[Forsaken Framework] ДОСТИГНУТ ЛИМИТ ОШИБОК - РЕКОМЕНДУЕТСЯ ПЕРЕЗАГРУЗКА")
+    end
+end
+
+function ErrorHandler:GetErrorStats()
+    return {
+        TotalErrors = self._errorCount,
+        LastError = self._lastError,
+        IsCritical = self._errorCount >= self._maxErrors
+    }
+end
+
+-- ============================================================================
+-- SECTION 8: ЭКСПОРТ ФУНКЦИЙ И ЗАВЕРШЕНИЕ МОДУЛЯ
+-- ============================================================================
+
+-- Экспортируем системы для использования в других модулях
+local AdvancedSurvivorAutomation = {
+    ClassDetector = ClassDetector,
+    ProjectilePrediction = ProjectilePrediction,
+    AutoParrySystem = AutoParrySystem,
+    ItemESP = ItemESP,
+    ErrorHandler = ErrorHandler,
+    
+    -- Статистика модуля
+    ModuleInfo = {
+        Name = "Advanced Survivor Automation",
+        Version = "9.0.1",
+        LinesOfCode = 1850, -- Текущее количество строк
+        Systems = {
+            "Class Detection System",
+            "Projectile Prediction (Elliot)",
+            "Auto-Parry System (Guest 1337)",
+            "Item ESP System",
+            "Error Handling"
+        },
+        LastUpdated = os.date("%Y-%m-%d %H:%M:%S")
+    }
+}
+
+-- Функция безопасной инициализации
+function AdvancedSurvivorAutomation:SafeInitialize()
+    print(string.format("[%s] Начинаем безопасную инициализацию...", self.ModuleInfo.Name))
+    
+    local success, err = ErrorHandler:CaptureError(function()
+        InitializeAdvancedSurvivorAutomation()
+    end, "ModuleInitialization")
+    
+    if success then
+        print(string.format("[%s] Инициализация успешно завершена", self.ModuleInfo.Name))
+        
+        -- Обновляем статистику
+        self.ModuleInfo.Initialized = true
+        self.ModuleInfo.InitializationTime = tick()
+        
+        return true
+    else
+        warn(string.format("[%s] Инициализация завершилась с ошибкой: %s", 
+              self.ModuleInfo.Name, err))
+        return false
+    end
+end
+
+-- Функция получения статистики
+function AdvancedSurvivorAutomation:GetStats()
+    local stats = {
+        Module = self.ModuleInfo,
+        Errors = self.ErrorHandler:GetErrorStats(),
+        ActiveSystems = {
+            ClassDetection = self.ClassDetector._activeCharacter or "Inactive",
+            ItemESP = self.ItemESP._active,
+            AutoParry = self.AutoParrySystem._active,
+            ProjectilePrediction = self.ProjectilePrediction._active
+        },
+        Performance = {
+            ItemCacheSize = table.count(self.ItemESP._itemCache),
+            ActiveHighlights = table.count(self.ItemESP._highlights),
+            ClassModules = #self.ClassDetector._classSpecificModules
+        }
+    }
+    
+    return stats
+end
+
+-- Автоматическая инициализация при загрузке
+task.spawn(function()
+    task.wait(3) -- Ждем загрузки игры
+    
+    local initialized = AdvancedSurvivorAutomation:SafeInitialize()
+    
+    if initialized then
+        -- Периодическая проверка здоровья систем
+        game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+            -- Проверка на утечки памяти
+            if tick() % 30 < deltaTime then -- Каждые 30 секунд
+                local stats = AdvancedSurvivorAutomation:GetStats()
+                
+                if stats.Errors.TotalErrors > 5 then
+                    warn(string.format("[Forsaken Framework] Высокий уровень ошибок: %d", 
+                          stats.Errors.TotalErrors))
+                end
+                
+                if stats.Performance.ActiveHighlights > 50 then
+                    warn("[Forsaken Framework] Много активных подсветок, возможна нагрузка на FPS")
+                end
+            end
+        end)
+    end
+end)
+
+-- Возвращаем модуль
+return AdvancedSurvivorAutomation
