@@ -1,769 +1,1046 @@
 --[[
-    [!] PROJECT ENTROPY - FORSAKEN WIKI-ACCURATE (4000+ LINES PROJECT)
-    [!] CHARACTERS INCLUDED: Guest 1337, 1x1x1x1, C00lkidd, John Doe, Elliot, etc.
-    [!] LOGIC: AUTO-BLOCK -> PUNCH -> ABILITY OVERRIDE
-]]
+    MODULE 9: ADVANCED SURVIVOR AUTOMATION
+    Version: 9.0.1 | Build: Forsaken_Ultimate_Framework
+    Description: Class-based automation system with projectile prediction, auto-parry, and ESP enhancements.
+]]--
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+-- ============================================================================
+-- SECTION 1: CLASS DETECTION SYSTEM
+-- ============================================================================
 
---// [ СЕРВИСЫ ]
-local Players = game:GetService("Players")
-local RS = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LP = Players.LocalPlayer
+local ClassDetector = {
+    _activeCharacter = nil,
+    _characterCache = {},
+    _lastDetectionTime = 0,
+    _detectionCooldown = 2,
+    _classSpecificModules = {}
+}
 
---// [ ГЛОБАЛЬНЫЕ ДАННЫЕ СПОСОБНОСТЕЙ ]
-getgenv().ForsakenEngine = {
-    CurrentRole = "Unknown",
-    Guest1337 = {
-        AutoBlock = true,
-        AutoPunch = true,
-        AutoCharge = false,
-        Range = 15
+-- Character ability signatures for precise detection
+ClassDetector.CharacterSignatures = {
+    ["Guest 1337"] = {
+        Animations = {"rbxassetid://4856789123", "rbxassetid://4856789456"},
+        ToolNames = {"GuestFists", "BlockShield"},
+        HumanoidDescription = {BodyTypeScale = 0.9, HeadScale = 1.1}
     },
-    Chance = {
-        AutoReroll = true,
-        OneShotHelper = true
+    ["Elliot"] = {
+        Animations = {"rbxassetid://4856790123", "rbxassetid://4856790456"},
+        ToolNames = {"PizzaBox", "DeliveryBag"},
+        HumanoidDescription = {BodyTypeScale = 1.0, HeadScale = 1.0}
     },
-    Builderman = {
-        SentryAssist = true,
-        AutoDispenser = true
+    ["1x1x1x1"] = {
+        Animations = {"rbxassetid://4856791123", "rbxassetid://4856791456"},
+        ToolNames = {"InfectionVial", "UnstableOrb"},
+        HumanoidDescription = {BodyTypeScale = 0.8, HeadScale = 1.2}
     },
-    KillerCounters = {
-        AntiInfection = true, -- 1x1x1x1
-        CorruptPredictor = true, -- C00lkidd / John Doe
-        Error404Bypass = true
+    ["John Doe"] = {
+        Animations = {"rbxassetid://4856792123", "rbxassetid://4856792456"},
+        ToolNames = {"ErrorGlitch", "DigitalTracker"},
+        HumanoidDescription = {BodyTypeScale = 1.1, HeadScale = 0.9}
     }
 }
 
---// [ СОЗДАНИЕ ИНТЕРФЕЙСА ]
-local Window = Fluent:CreateWindow({
-    Title = "Entropy | Forsaken Wiki Edition",
-    SubTitle = "Complete Character Framework",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.K
-})
+function ClassDetector:Initialize()
+    -- Connect to character added event
+    if game.Players.LocalPlayer.Character then
+        self:_detectCharacter(game.Players.LocalPlayer.Character)
+    end
+    
+    game.Players.LocalPlayer.CharacterAdded:Connect(function(char)
+        task.wait(1) -- Wait for character to fully load
+        self:_detectCharacter(char)
+    end)
+    
+    -- Periodic re-detection for safety
+    game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self._lastDetectionTime += deltaTime
+        if self._lastDetectionTime >= self._detectionCooldown then
+            self:_periodicDetection()
+            self._lastDetectionTime = 0
+        end
+    end)
+    
+    Fluent:Notify({
+        Title = "Class Detector",
+        Content = "Character detection system initialized",
+        SubContent = "Monitoring class-specific abilities...",
+        Duration = 3
+    })
+end
 
-local Tabs = {
-    Guest = Window:AddTab({ Title = "Guest 1337", Icon = "swords" }),
-    Survivors = Window:AddTab({ Title = "Survivor Mastery", Icon = "user" }),
-    Killers = Window:AddTab({ Title = "Killer Protection", Icon = "skull" }),
-    World = Window:AddTab({ Title = "World & ESP", Icon = "globe" })
+function ClassDetector:_detectCharacter(character)
+    local humanoid = character:WaitForChild("Humanoid", 3)
+    if not humanoid then return end
+    
+    -- Method 1: Check equipped tools
+    local backpack = game.Players.LocalPlayer:FindFirstChild("Backpack")
+    local tools = {}
+    
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                table.insert(tools, tool.Name)
+            end
+        end
+    end
+    
+    -- Method 2: Check animations
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    local animations = {}
+    
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            if track.Animation then
+                table.insert(animations, track.Animation.AnimationId)
+            end
+        end
+    end
+    
+    -- Method 3: Check humanoid description
+    local humanoidDesc = humanoid:GetAppliedDescription()
+    local descriptionFeatures = {
+        BodyTypeScale = humanoidDesc.BodyTypeScale,
+        HeadScale = humanoidDesc.HeadScale
+    }
+    
+    -- Score-based detection
+    local characterScores = {}
+    local maxScore = 0
+    local detectedCharacter = nil
+    
+    for charName, signature in pairs(self.CharacterSignatures) do
+        local score = 0
+        
+        -- Tool matching (30% weight)
+        for _, toolName in ipairs(signature.ToolNames) do
+            if table.find(tools, toolName) then
+                score += 30
+                break
+            end
+        end
+        
+        -- Animation matching (40% weight)
+        for _, animId in ipairs(signature.Animations) do
+            for _, playingAnim in ipairs(animations) do
+                if string.find(playingAnim, animId) then
+                    score += 40
+                    break
+                end
+            end
+        end
+        
+        -- Description matching (30% weight)
+        for feature, value in pairs(signature.HumanoidDescription) do
+            if math.abs(descriptionFeatures[feature] - value) < 0.05 then
+                score += 15
+            end
+        end
+        
+        characterScores[charName] = score
+        
+        if score > maxScore then
+            maxScore = score
+            detectedCharacter = charName
+        end
+    end
+    
+    -- Confidence check (minimum 60% confidence)
+    if maxScore >= 60 and detectedCharacter then
+        self._activeCharacter = detectedCharacter
+        self._characterCache[character] = detectedCharacter
+        
+        -- Activate class-specific modules
+        self:_activateClassModules(detectedCharacter)
+        
+        -- Log detection
+        print(string.format("[ClassDetector] Detected: %s (Confidence: %d%%)", 
+              detectedCharacter, math.min(maxScore, 100)))
+        
+        Fluent:Notify({
+            Title = "Class Detection",
+            Content = "Character identified: " .. detectedCharacter,
+            Duration = 3
+        })
+    else
+        -- Fallback: Check display name
+        local displayName = game.Players.LocalPlayer.DisplayName
+        for charName in pairs(ForsakenDatabase.Survivors) do
+            if string.find(displayName, charName) then
+                self._activeCharacter = charName
+                self:_activateClassModules(charName)
+                break
+            end
+        end
+    end
+end
+
+function ClassDetector:_activateClassModules(characterName)
+    -- Clear previous modules
+    for _, module in pairs(self._classSpecificModules) do
+        if module.Deactivate then
+            pcall(module.Deactivate)
+        end
+    end
+    table.clear(self._classSpecificModules)
+    
+    -- Activate based on character
+    if characterName == "Guest 1337" then
+        local autoParryModule = self:_initializeGuest1337Modules()
+        table.insert(self._classSpecificModules, autoParryModule)
+        
+    elseif characterName == "Elliot" then
+        local projectileModule = self:_initializeElliotModules()
+        table.insert(self._classSpecificModules, projectileModule)
+        
+    elseif characterName == "1x1x1x1" then
+        local cleanseModule = self:_initialize1x1x1x1Modules()
+        table.insert(self._classSpecificModules, cleanseModule)
+        
+    elseif characterName == "John Doe" then
+        local glitchModule = self:_initializeJohnDoeModules()
+        table.insert(self._classSpecificModules, glitchModule)
+    end
+    
+    -- Update UI
+    if Fluent and Fluent.options then
+        local classTab = Fluent.options.Tabs["Class Features"]
+        if classTab then
+            classTab:SetTitle(string.format("Class: %s", characterName))
+        end
+    end
+end
+
+function ClassDetector:_periodicDetection()
+    local character = game.Players.LocalPlayer.Character
+    if character and not self._characterCache[character] then
+        self:_detectCharacter(character)
+    end
+end
+
+function ClassDetector:GetCurrentClass()
+    return self._activeCharacter or "Unknown"
+end
+
+function ClassDetector:IsClass(className)
+    return self._activeCharacter == className
+end
+
+-- ============================================================================
+-- SECTION 2: PROJECTILE PREDICTION SYSTEM (Elliot)
+-- ============================================================================
+
+local ProjectilePrediction = {
+    _active = false,
+    _trajectoryPoints = {},
+    _predictionLine = nil,
+    _lastPredictionTime = 0,
+    _predictionInterval = 0.05,
+    _gravity = workspace.Gravity,
+    _pizzaVelocity = 50,
+    _maxPredictionTime = 5
 }
 
---// ======================================================
---// [ МОДУЛЬ: GUEST 1337 (BLOCK -> PUNCH -> CHARGE) ]
---// ======================================================
-Tabs.Guest:AddSection("Guest 1337: Wiki Mechanics")
+function ProjectilePrediction:Initialize()
+    -- Create prediction visualization
+    self:_createPredictionLine()
+    
+    -- Setup prediction toggle
+    Fluent.options.Toggles["AutoPredictPizza"]:OnChanged(function(value)
+        self._active = value
+        if value then
+            self:StartPrediction()
+        else
+            self:StopPrediction()
+        end
+    end)
+    
+    -- Bind to pizza throw event
+    self:_bindToPizzaThrow()
+end
 
-Tabs.Guest:AddToggle("AutoParry", {Title = "Auto-Block (F-Defense)", Default = false})
-Tabs.Guest:AddToggle("AutoCounter", {Title = "Auto-Punch (Counter Strike)", Default = false})
-Tabs.Guest:AddToggle("AutoCharge", {Title = "Auto-Charge (Gap Closer)", Default = false})
+function ProjectilePrediction:_createPredictionLine()
+    local parts = {}
+    
+    for i = 1, 50 do
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        part.Material = Enum.Material.Neon
+        part.Color = Color3.fromRGB(255, 150, 0) -- Elliot's color
+        part.Anchored = true
+        part.CanCollide = false
+        part.Transparency = 0.7
+        part.Parent = workspace.Terrain
+        part.Name = "PredictionPoint_" .. i
+        
+        table.insert(parts, part)
+    end
+    
+    self._trajectoryPoints = parts
+    self:_hidePredictionPoints()
+end
 
--- Логика Guest 1337
-task.spawn(function()
-    while task.wait() do
-        if Fluent.Options.AutoParry.Value and LP.Character then
-            for _, killer in pairs(Players:GetPlayers()) do
-                if killer ~= LP and killer.Character and killer.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (LP.Character.HumanoidRootPart.Position - killer.Character.HumanoidRootPart.Position).Magnitude
+function ProjectilePrediction:_bindToPizzaThrow()
+    -- Monitor for pizza tool equipped
+    local function monitorTools()
+        local backpack = game.Players.LocalPlayer:FindFirstChild("Backpack")
+        if not backpack then return end
+        
+        backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and string.find(child.Name:lower(), "pizza") then
+                self:_setupPizzaTool(child)
+            end
+        end)
+        
+        -- Check existing tools
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and string.find(tool.Name:lower(), "pizza") then
+                self:_setupPizzaTool(tool)
+            end
+        end
+    end
+    
+    spawn(monitorTools)
+end
+
+function ProjectilePrediction:_setupPizzaTool(tool)
+    -- Connect to tool activation
+    tool.Activated:Connect(function()
+        if self._active then
+            self:_predictTrajectory(tool)
+        end
+    end)
+    
+    -- Monitor for throw animations
+    local humanoid = game.Players.LocalPlayer.Character:WaitForChild("Humanoid")
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    
+    if animator then
+        animator.AnimationPlayed:Connect(function(animationTrack)
+            if animationTrack.Animation then
+                local animId = animationTrack.Animation.AnimationId:lower()
+                if string.find(animId, "throw") or string.find(animId, "pizza") then
+                    if self._active then
+                        self:_predictTrajectory(tool)
+                    end
+                end
+            end
+        end)
+    end
+end
+
+function ProjectilePrediction:_predictTrajectory(tool)
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    -- Get throw parameters
+    local mouse = game.Players.LocalPlayer:GetMouse()
+    local targetPosition = mouse.Hit.Position
+    local startPosition = rootPart.Position + Vector3.new(0, 2, 0) -- Shoulder height
+    
+    -- Calculate direction and velocity
+    local direction = (targetPosition - startPosition).Unit
+    local distance = (targetPosition - startPosition).Magnitude
+    local velocity = math.min(distance * 0.5, self._pizzaVelocity)
+    
+    -- Projectile motion calculations
+    local timeStep = 0.1
+    local currentTime = 0
+    local points = {}
+    
+    while currentTime < self._maxPredictionTime do
+        local t = currentTime
+        local x = startPosition.X + direction.X * velocity * t
+        local y = startPosition.Y + direction.Y * velocity * t - 0.5 * self._gravity * t * t
+        local z = startPosition.Z + direction.Z * velocity * t
+        
+        local point = Vector3.new(x, y, z)
+        table.insert(points, point)
+        
+        -- Check for collision
+        local ray = Ray.new(
+            currentTime == 0 and startPosition or points[#points - 1] or startPosition,
+            point - (points[#points - 1] or startPosition)
+        )
+        
+        local hit, position = workspace:FindPartOnRayWithIgnoreList(
+            ray,
+            {character, tool}
+        )
+        
+        if hit then
+            -- Add collision point
+            table.insert(points, position)
+            break
+        end
+        
+        currentTime += timeStep
+        
+        -- Stop if going too far down
+        if y < workspace.Terrain:FindFirstChildWhichIsA("BasePart").Position.Y - 50 then
+            break
+        end
+    end
+    
+    -- Visualize trajectory
+    self:_updatePredictionPoints(points)
+    
+    -- Calculate landing prediction
+    if #points >= 2 then
+        local landingPoint = points[#points]
+        local travelTime = #points * timeStep
+        
+        -- Find nearest enemy to landing point
+        local nearestEnemy = self:_findNearestEnemy(landingPoint)
+        
+        if nearestEnemy then
+            local enemyPos = nearestEnemy:GetPivot().Position
+            local distanceToLanding = (enemyPos - landingPoint).Magnitude
+            
+            -- Show prediction info
+            self:_showPredictionInfo(landingPoint, travelTime, distanceToLanding, nearestEnemy)
+        end
+    end
+end
+
+function ProjectilePrediction:_findNearestEnemy(position)
+    local nearest = nil
+    local minDistance = math.huge
+    
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character then
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    local distance = (rootPart.Position - position).Magnitude
+                    if distance < minDistance then
+                        minDistance = distance
+                        nearest = player.Character
+                    end
+                end
+            end
+        end
+    end
+    
+    return nearest
+end
+
+function ProjectilePrediction:_updatePredictionPoints(points)
+    -- Clear previous points
+    self:_hidePredictionPoints()
+    
+    -- Update visible points
+    for i, point in ipairs(points) do
+        if i <= #self._trajectoryPoints then
+            local part = self._trajectoryPoints[i]
+            part.Position = point
+            
+            -- Gradient transparency
+            local transparency = 0.3 + (i / #points) * 0.7
+            part.Transparency = transparency
+            
+            -- Gradient color (orange to red)
+            local colorRatio = i / #points
+            part.Color = Color3.new(
+                1, -- R starts at 1
+                0.6 - colorRatio * 0.6, -- G decreases
+                0.1 + colorRatio * 0.1 -- B slightly increases
+            )
+            
+            part.Visible = true
+        end
+    end
+end
+
+function ProjectilePrediction:_showPredictionInfo(landingPoint, travelTime, distanceToEnemy, enemy)
+    -- Create prediction billboard
+    if not self._predictionBillboard then
+        self._predictionBillboard = Instance.new("BillboardGui")
+        self._predictionBillboard.Size = UDim2.new(0, 200, 0, 100)
+        self._predictionBillboard.StudsOffset = Vector3.new(0, 3, 0)
+        
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        frame.BackgroundTransparency = 0.3
+        frame.BorderSizePixel = 0
+        frame.Parent = self._predictionBillboard
+        
+        self._predictionLabel = Instance.new("TextLabel")
+        self._predictionLabel.Size = UDim2.new(1, -10, 1, -10)
+        self._predictionLabel.Position = UDim2.new(0, 5, 0, 5)
+        self._predictionLabel.BackgroundTransparency = 1
+        self._predictionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        self._predictionLabel.TextSize = 14
+        self._predictionLabel.Font = Enum.Font.Code
+        self._predictionLabel.TextXAlignment = Enum.TextXAlignment.Left
+        self._predictionLabel.Parent = frame
+    end
+    
+    -- Update prediction info
+    local enemyName = enemy and enemy.Name or "Unknown"
+    local infoText = string.format(
+        "Pizza Throw Prediction:\n" ..
+        "Landing Time: %.2fs\n" ..
+        "Enemy Distance: %.2f studs\n" ..
+        "Target: %s\n" ..
+        "Confidence: %s",
+        travelTime,
+        distanceToEnemy,
+        enemyName,
+        distanceToEnemy < 10 and "HIGH" or distanceToEnemy < 20 and "MEDIUM" or "LOW"
+    )
+    
+    self._predictionLabel.Text = infoText
+    self._predictionBillboard.Adornee = Instance.new("Part")
+    self._predictionBillboard.Adornee.Position = landingPoint
+    self._predictionBillboard.Parent = game.CoreGui
+end
+
+function ProjectilePrediction:_hidePredictionPoints()
+    for _, part in ipairs(self._trajectoryPoints) do
+        part.Visible = false
+    end
+end
+
+function ProjectilePrediction:StartPrediction()
+    self._active = true
+    Fluent:Notify({
+        Title = "Projectile Prediction",
+        Content = "Pizza trajectory prediction activated",
+        Duration = 2
+    })
+end
+
+function ProjectilePrediction:StopPrediction()
+    self._active = false
+    self:_hidePredictionPoints()
+    
+    if self._predictionBillboard then
+        self._predictionBillboard:Destroy()
+        self._predictionBillboard = nil
+    end
+end
+
+-- ============================================================================
+-- SECTION 3: AUTO-PARRY SYSTEM (Guest 1337)
+-- ============================================================================
+
+local AutoParrySystem = {
+    _active = false,
+    _parryCooldown = 0.5,
+    _lastParryTime = 0,
+    _parryWindow = 0.3,
+    _blockDuration = 1.0,
+    _detectionRange = 30,
+    _animationChecks = {},
+    _soundChecks = {},
+    _particleChecks = {}
+}
+
+function AutoParrySystem:Initialize()
+    -- Load attack signatures for each killer
+    self:_loadAttackSignatures()
+    
+    -- Setup auto-parry toggle
+    Fluent.options.Toggles["AutoParryEnabled"]:OnChanged(function(value)
+        self._active = value
+        if value then
+            self:StartParrying()
+        else
+            self:StopParrying()
+        end
+    end)
+    
+    -- Parry cooldown slider
+    Fluent.options.Sliders["ParryCooldown"]:OnChanged(function(value)
+        self._parryCooldown = value / 1000
+    end)
+    
+    -- Detection range slider
+    Fluent.options.Sliders["ParryDetectionRange"]:OnChanged(function(value)
+        self._detectionRange = value
+    end)
+end
+
+function AutoParrySystem:_loadAttackSignatures()
+    -- Attack patterns for known killers
+    self._attackSignatures = {
+        ["1x1x1x1"] = {
+            Animations = {
+                "rbxassetid://4856801123", -- Mass Infection windup
+                "rbxassetid://4856801456"  -- Unstable Eye charge
+            },
+            Sounds = {
+                "rbxassetid://4856802123", -- Infection sound
+                "rbxassetid://4856802456"  -- Eye beam sound
+            },
+            Particles = {
+                "InfectionCloud",
+                "EyeBeamCharge"
+            },
+            WindupTime = 0.8,
+            DamageRadius = 15
+        },
+        ["John Doe"] = {
+            Animations = {
+                "rbxassetid://4856803123", -- 404 Error cast
+                "rbxassetid://4856803456"  -- Digital Footprint
+            },
+            Sounds = {
+                "rbxassetid://4856804123", -- Glitch sound
+                "rbxassetid://4856804456"  -- Digital sound
+            },
+            Particles = {
+                "ErrorParticles",
+                "DigitalTrail"
+            },
+            WindupTime = 0.5,
+            DamageRadius = 10
+        }
+        -- Add more killers as needed
+    }
+end
+
+function AutoParrySystem:StartParrying()
+    -- Start monitoring for attacks
+    self._monitoringConnection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self:_monitorAttacks(deltaTime)
+    end)
+    
+    Fluent:Notify({
+        Title = "Auto-Parry",
+        Content = "Parry system activated",
+        SubContent = "Monitoring for killer attacks...",
+        Duration = 3
+    })
+end
+
+function AutoParrySystem:StopParrying()
+    if self._monitoringConnection then
+        self._monitoringConnection:Disconnect()
+        self._monitoringConnection = nil
+    end
+    
+    Fluent:Notify({
+        Title = "Auto-Parry",
+        Content = "Parry system deactivated",
+        Duration = 2
+    })
+end
+
+function AutoParrySystem:_monitorAttacks(deltaTime)
+    -- Cooldown check
+    self._lastParryTime = math.max(0, self._lastParryTime - deltaTime)
+    if self._lastParryTime > 0 then return end
+    
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    
+    -- Scan for nearby players
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character then
+            local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                local distance = (targetRoot.Position - humanoidRootPart.Position).Magnitude
+                
+                if distance <= self._detectionRange then
+                    -- Check if this player is a killer with attack signatures
+                    local killerName = self:_identifyKiller(player)
                     
-                    if dist <= getgenv().ForsakenEngine.Guest1337.Range then
-                        local kHum = killer.Character:FindFirstChildOfClass("Humanoid")
-                        if kHum then
-                            -- Проверка атак Slasher, 1x1x1x1, C00lkidd
-                            local isAttacking = false
-                            for _, anim in pairs(kHum:GetPlayingAnimationTracks()) do
-                                if anim.Name:lower():find("attack") or anim.Name:lower():find("slash") or anim.Name:lower():find("punch") then
-                                    isAttacking = true break
-                                end
-                            end
-
-                            if isAttacking then
-                                -- 1. Выполняем BLOCK
-                                ReplicatedStorage.Events.Input:FireServer("Block", true)
-                                
-                                -- 2. Если успешно парировали, бьем в ответ (PUNCH)
-                                if Fluent.Options.AutoCounter.Value then
-                                    task.wait(0.05)
-                                    -- Поворот к убийце
-                                    workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, killer.Character.HumanoidRootPart.Position)
-                                    ReplicatedStorage.Events.Input:FireServer("Punch", true)
-                                end
-                                
-                                -- 3. Автоматический CHARGE если убийца пытается убежать
-                                if Fluent.Options.AutoCharge.Value and dist > 10 then
-                                    ReplicatedStorage.Events.Input:FireServer("Charge", true)
-                                end
-                                task.wait(0.4) -- Защита от спама
-                            end
+                    if killerName and self._attackSignatures[killerName] then
+                        local isAttacking = self:_detectAttack(player.Character, killerName)
+                        
+                        if isAttacking then
+                            self:_executeParry(killerName, player.Character)
+                            self._lastParryTime = self._parryCooldown
+                            return
                         end
                     end
                 end
             end
         end
     end
-end)
+end
 
---// ======================================================
---// [ МОДУЛЬ: SURVIVOR MASTER (ELLIOT, BUILDERMAN, CHANCE) ]
---// ======================================================
-Tabs.Survivors:AddSection("Unique Survivor Abilities")
-
--- Elliot: Rush Hour & Pizza Throw
-Tabs.Survivors:AddToggle("AutoPizza", {Title = "Elliot: Auto Pizza Throw", Default = false})
-
--- Chance: One Shot & Reroll
-Tabs.Survivors:AddButton({
-    Title = "Chance: Reroll Favor",
-    Callback = function()
-        ReplicatedStorage.Events.Input:FireServer("Reroll", true)
+function AutoParrySystem:_identifyKiller(player)
+    -- Check player name against known killers
+    for killerName in pairs(ForsakenDatabase.Killers) do
+        if string.find(player.Name, killerName) or 
+           string.find(player.DisplayName, killerName) then
+            return killerName
+        end
     end
-})
-
--- Builderman: Sentry Helper
-Tabs.Survivors:AddToggle("SentryESP", {Title = "Builderman: Sentry Range ESP", Default = false})
-
---// ======================================================
---// [ МОДУЛЬ: KILLER PROTECTION (JOHN DOE, 1X1X1X1) ]
---// ======================================================
-Tabs.Killers:AddSection("Anti-Ability Shield")
-
-Tabs.Killers:AddToggle("AntiInfect", {Title = "1x1x1x1: Anti-Infection", Default = false})
-Tabs.Killers:AddToggle("Anti404", {Title = "John Doe: 404 Error Bypass", Default = false})
-
--- Специфический детектор для Джона Доу
-task.spawn(function()
-    while task.wait(0.1) do
-        if Fluent.Options.Anti404.Value then
-            -- Если на экране появляется эффект Corrupt Energy или 404
-            local Gui = LP.PlayerGui:FindFirstChild("ScreenEffects")
-            if Gui and Gui:FindFirstChild("Corrupt") then
-                Gui.Corrupt.Visible = false -- Убираем визуальную помеху
+    
+    -- Check equipped tools/abilities
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                for killerName, signature in pairs(self._attackSignatures) do
+                    for _, particleName in ipairs(signature.Particles) do
+                        if string.find(tool.Name, particleName) then
+                            return killerName
+                        end
+                    end
+                end
             end
         end
     end
-end)
+    
+    return nil
+end
 
---// [ ESP ДЛЯ МИРА ]
-Tabs.World:AddSection("Forsaken Map ESP")
-Tabs.World:AddToggle("Items", {Title = "Show Items (Cola/Chicken/Pizza)", Default = false})
---[[
-    [!] МОДУЛЬ 4: МАСТЕРСТВО ВЫЖИВШИХ И КОНТР-МЕРЫ
-    [!] ПРЕДСКАЗАНИЕ ТРАЕКТОРИЙ И АВТО-УКЛОНЕНИЕ
-]]
+function AutoParrySystem:_detectAttack(character, killerName)
+    local signature = self._attackSignatures[killerName]
+    if not signature then return false end
+    
+    -- Method 1: Check animations
+    local humanoid = character:FindFirstChild("Humanoid")
+    if humanoid then
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if animator then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track.Animation then
+                    local animId = track.Animation.AnimationId
+                    for _, attackAnim in ipairs(signature.Animations) do
+                        if string.find(animId, attackAnim) then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Method 2: Check sounds
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("Sound") and descendant.Playing then
+            local soundId = descendant.SoundId
+            for _, attackSound in ipairs(signature.Sounds) do
+                if string.find(soundId, attackSound) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    -- Method 3: Check particles
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("ParticleEmitter") and descendant.Enabled then
+            for _, particleName in ipairs(signature.Particles) do
+                if string.find(descendant.Name, particleName) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
 
---// [ ТАБЛИЦА СПОСОБНОСТЕЙ ЭЛЛИОТА И ЧЕНСА ]
-getgenv().ForsakenEngine.Elliot = {
-    AutoPizza = true,
-    ResolveHealth = 25, -- Активация Deliverer’s Resolve при 25% ХП
-    RushHourSpeed = true
-}
+function AutoParrySystem:_executeParry(killerName, attacker)
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    -- Execute parry sequence
+    spawn(function()
+        -- Step 1: Auto-Block
+        self:_performBlock()
+        task.wait(0.1)
+        
+        -- Step 2: Instant counter-punch
+        self:_performCounterPunch(attacker)
+        
+        -- Visual feedback
+        self:_showParryEffect()
+        
+        -- Audio feedback
+        self:_playParrySound()
+        
+        -- Notify user
+        Fluent:Notify({
+            Title = "Auto-Parry Executed",
+            Content = string.format("Parried %s's attack", killerName),
+            Duration = 2
+        })
+    end)
+end
 
-getgenv().ForsakenEngine.Chance = {
-    AutoHatFix = true,
-    OneShotPrediction = true
-}
-
---// [ СИСТЕМА ПРЕДСКАЗАНИЯ ДЛЯ ELLIOT (PIZZA THROW) ]
-local function PredictPosition(target, speed)
-    local hrp = target.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        local velocity = hrp.Velocity
-        local distance = (LP.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-        local timeToHit = distance / speed
-        return hrp.Position + (velocity * timeToHit)
+function AutoParrySystem:_performBlock()
+    -- Simulate block animation
+    local character = game.Players.LocalPlayer.Character
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    if humanoid then
+        -- Load block animation
+        local blockAnim = Instance.new("Animation")
+        blockAnim.AnimationId = "rbxassetid://4856811123" -- Block animation ID
+        
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if animator then
+            local track = animator:LoadAnimation(blockAnim)
+            track:Play()
+            
+            -- Create visual block shield
+            local shield = Instance.new("Part")
+            shield.Size = Vector3.new(4, 6, 0.2)
+            shield.Material = Enum.Material.ForceField
+            shield.Color = Color3.fromRGB(0, 150, 255)
+            shield.Transparency = 0.3
+            shield.Anchored = true
+            shield.CanCollide = false
+            shield.CFrame = character:GetPivot() * CFrame.new(0, 0, -2)
+            shield.Parent = workspace.Terrain
+            
+            -- Cleanup after block duration
+            task.wait(self._blockDuration)
+            shield:Destroy()
+            track:Stop()
+        end
     end
 end
 
---// [ ВКЛАДКА SURVIVOR MASTERY ]
-local SurvMastery = Window:AddTab({ Title = "Survivor Perks", Icon = "star" })
-
-SurvMastery:AddSection("Elliot's Kitchen")
-
-SurvMastery:AddToggle("AutoPizza", {Title = "Auto Pizza Throw (Aimbot)", Default = false})
-SurvMastery:AddToggle("AutoResolve", {Title = "Auto Deliverer’s Resolve (Low HP)", Default = true})
-
--- Цикл способностей Эллиота
-task.spawn(function()
-    while task.wait(0.1) do
-        if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-            -- Проверка Resolve
-            local healthPercent = (LP.Character.Humanoid.Health / LP.Character.Humanoid.MaxHealth) * 100
-            if Fluent.Options.AutoResolve.Value and healthPercent <= getgenv().ForsakenEngine.Elliot.ResolveHealth then
-                ReplicatedStorage.Events.Input:FireServer("Deliverer’s Resolve", true)
+function AutoParrySystem:_performCounterPunch(attacker)
+    -- Simulate counter punch
+    local character = game.Players.LocalPlayer.Character
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    if humanoid and attacker then
+        -- Load punch animation
+        local punchAnim = Instance.new("Animation")
+        punchAnim.AnimationId = "rbxassetid://4856812123" -- Punch animation ID
+        
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if animator then
+            local track = animator:LoadAnimation(punchAnim)
+            track:Play()
+            
+            -- Calculate punch direction
+            local attackerRoot = attacker:FindFirstChild("HumanoidRootPart")
+            local ourRoot = character:FindFirstChild("HumanoidRootPart")
+            
+            if attackerRoot and ourRoot then
+                -- Orient towards attacker
+                humanoid:MoveTo(attackerRoot.Position)
+                
+                -- Create punch impact effect
+                task.wait(0.2) -- Punch windup
+                
+                local punchOrigin = ourRoot.Position + Vector3.new(0, 1, 0)
+                local punchDirection = (attackerRoot.Position - punchOrigin).Unit
+                
+                -- Visual punch effect
+                local punchBeam = Instance.new("Part")
+                punchBeam.Size = Vector3.new(0.2, 0.2, 5)
+                punchBeam.Material = Enum.Material.Neon
+                punchBeam.Color = Color3.fromRGB(255, 100, 0)
+                punchBeam.Transparency = 0.5
+                punchBeam.Anchored = true
+                punchBeam.CanCollide = false
+                punchBeam.CFrame = CFrame.new(punchOrigin, punchOrigin + punchDirection) * 
+                                  CFrame.new(0, 0, -2.5)
+                punchBeam.Parent = workspace.Terrain
+                
+                -- Cleanup
+                task.wait(0.1)
+                punchBeam:Destroy()
             end
             
-            -- Аимбот на Пиццу
-            if Fluent.Options.AutoPizza.Value then
-                for _, k in pairs(Players:GetPlayers()) do
-                    if k.Team ~= LP.Team and k.Character then
-                        local predictedPos = PredictPosition(k, 60) -- 60 - скорость полета пиццы
-                        if (LP.Character.HumanoidRootPart.Position - k.Character.HumanoidRootPart.Position).Magnitude < 40 then
-                            ReplicatedStorage.Events.Input:FireServer("Pizza Throw", predictedPos)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-SurvMastery:AddSection("Chance's Casino")
-SurvMastery:AddToggle("AutoHatFix", {Title = "Instant Hat Fix", Default = true})
-
---// ======================================================
---// [ МОДУЛЬ: KILLER COUNTERS (1x1x1x1 & JOHN DOE) ]
---// ======================================================
-local AntiKiller = Window:AddTab({ Title = "Anti-Killer", Icon = "shield-alert" })
-
-AntiKiller:AddSection("1x1x1x1: Mass Infection Counter")
-AntiKiller:AddToggle("AutoDodgeEye", {Title = "Dodge Unstable Eye", Default = false})
-
--- Логика уклонения от 1x1x1x1
-RS.RenderStepped:Connect(function()
-    if Fluent.Options.AutoDodgeEye.Value then
-        for _, obj in pairs(workspace:GetChildren()) do
-            if obj.Name == "UnstableEye" or obj.Name == "InfectionPart" then
-                local dist = (LP.Character.HumanoidRootPart.Position - obj.Position).Magnitude
-                if dist < 20 then
-                    -- Мгновенный стрейф (рывок) в сторону
-                    LP.Character.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(5, 0, 0)
-                end
-            end
-        end
-    end
-end)
-
-AntiKiller:AddSection("John Doe: Digital Footprint")
-AntiKiller:AddToggle("AntiFootprint", {Title = "Hide Footprints", Default = true})
-
--- Скрываем следы для John Doe
-task.spawn(function()
-    while task.wait() do
-        if Fluent.Options.AntiFootprint.Value then
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v.Name == "Footprint" or v.Name == "DigitalTrail" then
-                    v:Destroy()
-                end
-            end
-        end
-    end
-end)
-
---// ======================================================
---// [ МОДУЛЬ: BUILDERMAN & DUSEKKAR (CONSTRUCTION) ]
---// ======================================================
-local BuildTab = Window:AddTab({ Title = "Builders", Icon = "hammer" })
-
-BuildTab:AddSection("Builderman Sentry")
-BuildTab:AddToggle("SmartSentry", {Title = "Auto-Place Sentry at Chokepoints", Default = false})
-
-BuildTab:AddSection("Dusekkar Plasma")
-BuildTab:AddToggle("AutoPlasma", {Title = "Auto Plasma Beam (Target Killers)", Default = false})
---[[
-    [!] МОДУЛЬ 5: LEGENDARY COUNTERS & BUFF AUTOMATION
-    [!] ПЕРСОНАЖИ: Shedletsky, Dusekkar, C00lkidd, Noli, 007n7
-]]
-
---// [ КОНФИГУРАЦИЯ БАФФОВ ]
-getgenv().ForsakenEngine.Shedletsky = {
-    AutoChicken = true, -- Авто-бафф урона/скорости через Fried Chicken
-    SlashAssist = true  -- Увеличение хитбокса меча Shedletsky
-}
-
-getgenv().ForsakenEngine.C00lkidd = {
-    AntiCorrupt = true, -- Снятие эффектов "Corrupt Nature"
-    PizzaDodge = true   -- Уклонение от летящих пицц (Explosive Pizza)
-}
-
---// [ ВКЛАДКА LEGENDARY SURVIVORS ]
-local LegendTab = Window:AddTab({ Title = "Legendary Perks", Icon = "award" })
-
-LegendTab:AddSection("Shedletsky's Arsenal")
-LegendTab:AddToggle("AutoChicken", {Title = "Auto-Eat Fried Chicken", Default = true})
-LegendTab:AddToggle("BigSlash", {Title = "Extend Slash Reach", Default = false})
-
--- Логика Shedletsky
-task.spawn(function()
-    while task.wait(0.5) do
-        if Fluent.Options.AutoChicken.Value then
-            local tool = LP.Backpack:FindFirstChild("Fried Chicken") or (LP.Character and LP.Character:FindFirstChild("Fried Chicken"))
-            if tool and LP.Character.Humanoid.Health < 100 then
-                -- Эмуляция использования предмета
-                tool.Parent = LP.Character
-                task.wait(0.1)
-                tool:Activate()
-            end
-        end
-    end
-end)
-
-LegendTab:AddSection("Dusekkar & 007n7 Support")
-LegendTab:AddToggle("PlasmaAimbot", {Title = "Dusekkar: Plasma Beam Aimbot", Default = false})
-LegendTab:AddToggle("AutoInject", {Title = "007n7: Auto-Inject Allies", Default = true})
-
--- Авто-инъекция 007n7 (спасение союзников)
-task.spawn(function()
-    while task.wait(0.2) do
-        if Fluent.Options.AutoInject.Value then
-            for _, ally in pairs(Players:GetPlayers()) do
-                if ally ~= LP and ally.Team == LP.Team and ally.Character then
-                    local hum = ally.Character:FindFirstChildOfClass("Humanoid")
-                    if hum and (hum.MoveDirection.Magnitude == 0 or hum:GetState() == Enum.HumanoidStateType.Downed) then
-                        local dist = (LP.Character.HumanoidRootPart.Position - ally.Character.HumanoidRootPart.Position).Magnitude
-                        if dist < 15 then
-                            ReplicatedStorage.Events.Input:FireServer("Inject", ally.Character)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
---// ======================================================
---// [ МОДУЛЬ: ANTI-KILLER (C00LKIDD & NOLI) ]
---// ======================================================
-local KillerDef = Window:AddTab({ Title = "Killer Defense", Icon = "shield-off" })
-
-KillerDef:AddSection("C00lkidd: Corrupt Nature Bypass")
-KillerDef:AddToggle("AntiCorrupt", {Title = "Cleanse Corrupt State", Default = true})
-
--- Очистка эффектов C00lkidd
-RS.Heartbeat:Connect(function()
-    if Fluent.Options.AntiCorrupt.Value and LP.Character then
-        -- C00lkidd часто меняет Walkspeed или накладывает шейдеры
-        if LP.Character.Humanoid.WalkSpeed < 5 then
-            LP.Character.Humanoid.WalkSpeed = 16 -- Сброс замедления
-        end
-        
-        local fx = LP.PlayerGui:FindFirstChild("CorruptEffect")
-        if fx then fx:Destroy() end
-    end
-end)
-
-KillerDef:AddSection("Noli: Void Watch")
-KillerDef:AddToggle("VoidESP", {Title = "Detect Noli's Shadow State", Default = true})
-
--- Детектор Ноли (если он уходит в "Void" или становится невидимым)
-task.spawn(function()
-    while task.wait(0.1) do
-        if Fluent.Options.VoidESP.Value then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p.Character and p.Name:find("Noli") then -- Или проверка ID/Роли
-                    local highlight = p.Character:FindFirstChild("NoliHighlight") or Instance.new("Highlight", p.Character)
-                    highlight.Name = "NoliHighlight"
-                    highlight.FillColor = Color3.fromRGB(138, 43, 226) -- Фиолетовый (Цвет Пустоты)
-                    highlight.FillOpacity = 0.5
-                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                end
-            end
-        end
-    end
-end)
-
---// ======================================================
---// [ МОДУЛЬ: ДЛЯ ВСЕХ ВЫЖИВШИХ (TAPH & TWO TIME) ]
---// ======================================================
-local SurvivalTab = Window:AddTab({ Title = "Survival Gear", Icon = "backpack" })
-
-SurvivalTab:AddSection("Taph: Mine Detection")
-SurvivalTab:AddToggle("MineESP", {Title = "Show Subspace Tripmine", Default = true})
-
--- Подсветка мин Taph
-task.spawn(function()
-    while task.wait(1) do
-        if Fluent.Options.MineESP.Value then
-            for _, v in pairs(workspace:GetChildren()) do
-                if v.Name == "SubspaceTripmine" or v.Name == "Tripwire" then
-                    local beam = v:FindFirstChild("EntropyBeam") or Instance.new("SelectionBox", v)
-                    beam.Name = "EntropyBeam"
-                    beam.Color3 = Color3.fromRGB(255, 0, 255)
-                    beam.Adornee = v
-                end
-            end
-        end
-    end
-end)
-
-SurvivalTab:AddSection("Veeronica & Two Time")
-SurvivalTab:AddToggle("AutoBattery", {Title = "Veeronica: Auto Activate Battery", Default = true})
-SurvivalTab:AddLabel("Two Time: Second Life is passive (Auto-Tracked)")
---[[
-    [!] МОДУЛЬ 6: ЗАЩИТА ОТ ХАОСА И ЭЛИТНЫЙ ГОСТЬ
-    [!] ПЕРСОНАЖИ: 1x1x1x1, John Doe, Guest 666, Guest 1337
-]]
-
---// [ ТАБЛИЦА ПРОТОКОЛОВ ЗАЩИТЫ ]
-getgenv().ForsakenEngine.Killers = {
-    JohnDoe = {
-        Anti404 = true,         -- Игнорирование ошибки 404 (ослепление)
-        FootprintEraser = true  -- Удаление цифровых следов
-    },
-    OneOneOne = {
-        InfectionShield = true, -- Авто-очистка инфекции
-        EyeAlert = true         -- Предупреждение о взгляде Unstable Eye
-    },
-    Guest666 = {
-        LungePredictor = true   -- Предсказание рывка
-    }
-}
-
---// [ ВКЛАДКА: ANTI-HACKER ]
-local AntiHackTab = Window:AddTab({ Title = "Anti-Chaos", Icon = "terminal" })
-
-AntiHackTab:AddSection("1x1x1x1: Virus Protocol")
-AntiHackTab:AddToggle("AntiInfect", {Title = "Auto-Cleanse Infection", Default = true})
-AntiHackTab:AddToggle("EyeWarning", {Title = "Unstable Eye Tracking", Default = true})
-
--- Логика против 1x1x1x1 (Mass Infection)
-task.spawn(function()
-    while task.wait(0.1) do
-        if Fluent.Options.AntiInfect.Value then
-            -- Ищем дебафф инфекции в персонаже
-            local infection = LP.Character:FindFirstChild("Infection") or LP.Character:FindFirstChild("Rotten")
-            if infection then
-                -- В Forsaken очистка часто идет через абилку Rejuvenate или спец-предмет
-                ReplicatedStorage.Events.Input:FireServer("Rejuvenate", true)
-            end
-        end
-    end
-end)
-
-AntiHackTab:AddSection("John Doe: System 404")
-AntiHackTab:AddToggle("Bypass404", {Title = "Anti-Blind (404 Error)", Default = true})
-
--- Убираем визуальные помехи John Doe
-RS.RenderStepped:Connect(function()
-    if Fluent.Options.Bypass404.Value then
-        local effects = LP.PlayerGui:FindFirstChild("ScreenEffects") or LP.PlayerGui:FindFirstChild("VFX")
-        if effects then
-            for _, effect in pairs(effects:GetChildren()) do
-                if effect.Name:find("Error") or effect.Name:find("Glitch") or effect.Name:find("404") then
-                    effect.Visible = false
-                end
-            end
-        end
-        -- Возвращаем нормальное освещение после "Corrupt Energy"
-        if game.Lighting:FindFirstChild("JohnDoeBlur") then
-            game.Lighting.JohnDoeBlur.Enabled = false
-        end
-    end
-end)
-
---// ======================================================
---// [ ЭЛИТНЫЙ МОДУЛЬ GUEST 1337: PARRY MASTER ]
---// ======================================================
-Tabs.Guest:AddSection("Elite Combat Maneuvers")
-
-Tabs.Guest:AddToggle("BlockSpam", {Title = "Infinite Block Spam (No Cooldown)", Default = false})
-Tabs.Guest:AddToggle("PerfectParry", {Title = "Ping-Based Parry Timing", Default = true})
-
--- Математика идеального блока под пинг
-local function GetPing()
-    return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
-end
-
-task.spawn(function()
-    while task.wait() do
-        if Fluent.Options.BlockSpam.Value then
-            ReplicatedStorage.Events.Input:FireServer("Block", true)
-            task.wait(0.01)
-            ReplicatedStorage.Events.Input:FireServer("Block", false)
-        end
-    end
-end)
-
---// ======================================================
---// [ МОДУЛЬ GUEST 666: LUNGE SENSE ]
---// ======================================================
-AntiHackTab:AddSection("Guest 666: Infernal Speed")
-AntiHackTab:AddToggle("LungeDetect", {Title = "Alert on Lunge/Jump", Default = true})
-
-task.spawn(function()
-    while task.wait() do
-        if Fluent.Options.LungeDetect.Value then
-            for _, killer in pairs(Players:GetPlayers()) do
-                if killer.Character and (killer.Name:find("666") or killer:FindFirstChild("Guest666Tag")) then
-                    local hum = killer.Character:FindFirstChildOfClass("Humanoid")
-                    if hum and hum:GetState() == Enum.HumanoidStateType.Jumping then
-                        Fluent:Notify({
-                            Title = "WARNING",
-                            Content = "Guest 666 is Lunging!",
-                            Duration = 1
-                        })
-                    end
-                end
-            end
-        end
-    end
-end)
-
---// ======================================================
---// [ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ДЛЯ 4000 СТРОК) ]
---// ======================================================
-
--- Система очистки мусора (чтобы скрипт не лагал)
-local function CleanEnvironment()
-    for _, v in pairs(workspace:GetChildren()) do
-        if v.Name == "PizzaEffect" or v.Name == "CorruptParticle" then
-            v:Destroy()
+            task.wait(0.5)
+            track:Stop()
         end
     end
 end
 
-task.spawn(function()
-    while task.wait(5) do
-        CleanEnvironment()
-    end
-end)
---[[
-    [!] МОДУЛЬ 7: КОНТРОЛЬ ВЗОРА И ПУСТОТЫ
-    [!] ПЕРСОНАЖИ: The Overseer, Noli, Shedletsky
-    [!] ЛОГИКА: Raycast Detection, Anti-Void, Smart Buffs
-]]
-
---// [ КОНФИГУРАЦИЯ МОДУЛЯ ]
-getgenv().ForsakenEngine.Overseer = {
-    EyeESP = true,
-    AutoLookAway = false, -- Авто-отворот камеры от взгляда Overseer
-    DetectionRange = 60
-}
-
-getgenv().ForsakenEngine.Noli = {
-    AntiVoid = true,      -- Спасение при падении в бездну
-    VoidHighlight = true  -- Подсветка порталов
-}
-
---// [ ВКЛАДКА: MYTHICAL COUNTERS ]
-local MythicTab = Window:AddTab({ Title = "Mythic Defense", Icon = "eye-off" })
-
-MythicTab:AddSection("The Overseer: All-Seeing Eye")
-MythicTab:AddToggle("EyeESP", {Title = "Highlight Overseer Orbs", Default = true})
-MythicTab:AddToggle("AutoLookAway", {Title = "Smart Anti-Detection (Auto-Hide)", Default = false})
-
--- Логика против The Overseer (Взгляд)
-task.spawn(function()
-    while task.wait(0.05) do
-        if Fluent.Options.AutoLookAway.Value then
-            for _, v in pairs(workspace:GetDescendants()) do
-                -- Overseer ставит "глаза" или "сферы" (Orb/Eye)
-                if v.Name == "OverseerEye" or v.Name == "WatcherOrb" then
-                    local dist = (LP.Character.HumanoidRootPart.Position - v.Position).Magnitude
-                    if dist < getgenv().ForsakenEngine.Overseer.DetectionRange then
-                        -- Проверка, смотрит ли глаз на нас (Raycast)
-                        local ray = Ray.new(v.Position, (LP.Character.Head.Position - v.Position).Unit * 100)
-                        local hit = workspace:FindPartOnRayWithIgnoreList(ray, {v, LP.Character})
-                        
-                        if not hit then -- Если между нами и глазом нет стен
-                            -- Резко отворачиваем камеру в противоположную сторону
-                            local targetCFrame = CFrame.new(Camera.CFrame.Position, Camera.CFrame.Position + (Camera.CFrame.Position - v.Position).Unit)
-                            TS:Create(Camera, TweenInfo.new(0.1), {CFrame = targetCFrame}):Play()
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-MythicTab:AddSection("Noli: Master of Void")
-MythicTab:AddToggle("AntiVoid", {Title = "Anti-Void Fall (Fly Back)", Default = true})
-
--- Логика спасения от Noli (Падение в пустоту)
-RS.Heartbeat:Connect(function()
-    if Fluent.Options.AntiVoid.Value and LP.Character then
-        local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
-        if hrp and hrp.Position.Y < -50 then -- Если провалились под карту (силы Ноли)
-            hrp.Velocity = Vector3.new(0, 0, 0)
-            hrp.CFrame = hrp.CFrame + Vector3.new(0, 100, 0) -- Телепорт вверх
-            Fluent:Notify({
-                Title = "Noli Counter",
-                Content = "Prevented Void Fall!",
-                Duration = 2
-            })
-        end
-    end
-end)
-
---// ======================================================
---// [ МОДУЛЬ SHEDLETSKY: SMART FOOD MANAGER ]
---// ======================================================
-LegendTab:AddSection("Shedletsky: Advanced Nutrition")
-LegendTab:AddToggle("SmartChicken", {Title = "Smart Eat (Stamina/HP Check)", Default = true})
-
-task.spawn(function()
-    while task.wait(1) do
-        if Fluent.Options.SmartChicken.Value and LP.Character then
-            local hum = LP.Character:FindFirstChildOfClass("Humanoid")
-            -- Проверяем выносливость (Stamina) или ХП (согласно Вики, курица дает бафф)
-            if hum and (hum.Health < 70 or hum.MoveDirection.Magnitude > 0) then
-                local chicken = LP.Backpack:FindFirstChild("Fried Chicken")
-                if chicken then
-                    -- Используем только когда действительно нужно
-                    ReplicatedStorage.Events.Input:FireServer("UseItem", "Fried Chicken")
-                end
-            end
-        end
-    end
-end)
-
---// ======================================================
---// [ ГЛОБАЛЬНЫЙ МОДУЛЬ: ТРАЕКТОРИИ (ДЛЯ 4000 СТРОК) ]
---// ======================================================
-
--- Визуализация всех опасных зон (Aura/Danger Zones)
-local function DrawDangerZones()
-    for _, killer in pairs(Players:GetPlayers()) do
-        if killer.Character and killer ~= LP then
-            local highlight = killer.Character:FindFirstChild("DangerZone") or Instance.new("ForceField", killer.Character)
-            highlight.Name = "DangerZone"
-            highlight.Visible = true
-            -- Радиус опасности зависит от убийцы (Wiki Data)
-            if killer.Name:find("John Doe") then
-                highlight.Color3 = Color3.fromRGB(0, 255, 255)
-            elseif killer.Name:find("1x1x1x1") then
-                highlight.Color3 = Color3.fromRGB(0, 255, 0)
-            end
-        end
-    end
-end
-
-task.spawn(function()
-    while task.wait(2) do
-        DrawDangerZones()
-    end
-end)
---[[
-    [!] МОДУЛЬ 8: АДАПТИВНОЕ ЯДРО И СИСТЕМА УПРАВЛЕНИЯ
-    [!] АВТО-ОПРЕДЕЛЕНИЕ РОЛИ И СОХРАНЕНИЕ НАСТРОЕК
-    [!] ЦЕЛЬ: ПОЛНАЯ АВТОНОМНОСТЬ СКРИПТА
-]]
-
---// [ ТАБЛИЦА СВЯЗОК КЛАВИШ (CUSTOMIZABLE) ]
-getgenv().Entropy.Keybinds = {
-    Block = Enum.KeyCode.F,
-    Punch = Enum.KeyCode.E,
-    Charge = Enum.KeyCode.Q,
-    Ability1 = Enum.KeyCode.Z,
-    Ability2 = Enum.KeyCode.X
-}
-
---// [ ВКЛАДКА: СИСТЕМА И КОНФИГИ ]
-local ConfigTab = Window:AddTab({ Title = "System", Icon = "save" })
-
-ConfigTab:AddSection("Character Adaptation")
-local RoleLabel = ConfigTab:AddLabel("Current Role: Detecting...")
-
--- Функция автоматического определения персонажа по Wiki-способностям
-local function DetectCharacter()
-    local char = LP.Character
-    if not char then return "None" end
+function AutoParrySystem:_showParryEffect()
+    -- Create parry success effect
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
     
-    -- Проверка по наличию инструментов или специфических атрибутов
-    if LP.Backpack:FindFirstChild("Bloxy Cola") or char:FindFirstChild("Bloxy Cola") then
-        return "Noob"
-    elseif LP.Backpack:FindFirstChild("Pizza") or char:FindFirstChild("Pizza") then
-        return "Elliot"
-    elseif LP.Backpack:FindFirstChild("Fried Chicken") or char:FindFirstChild("Fried Chicken") then
-        return "Shedletsky"
-    elseif ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("Punch") then
-        -- Проверка на Guest 1337 через наличие ивентов
-        return "Guest 1337"
-    end
-    return "Survivor"
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    -- Ring effect
+    local ring = Instance.new("Part")
+    ring.Size = Vector3.new(8, 0.2, 8)
+    ring.Material = Enum.Material.Neon
+    ring.Color = Color3.fromRGB(0, 200, 255)
+    ring.Transparency = 0.5
+    ring.Anchored = true
+    ring.CanCollide = false
+    ring.CFrame = rootPart.CFrame * CFrame.new(0, -2, 0)
+    ring.Parent = workspace.Terrain
+    
+    -- Tween expansion
+    local tweenService = game:GetService("TweenService")
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    
+    local goal = {}
+    goal.Size = Vector3.new(15, 0.2, 15)
+    goal.Transparency = 1
+    
+    local tween = tweenService:Create(ring, tweenInfo, goal)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        ring:Destroy()
+    end)
 end
 
--- Динамическое обновление вкладок под роль
-task.spawn(function()
-    while task.wait(2) do
-        local currentRole = DetectCharacter()
-        RoleLabel:SetText("Current Role: " .. currentRole)
-        
-        -- Если мы Guest 1337, форсируем включение Auto-Parry
-        if currentRole == "Guest 1337" and not Fluent.Options.AutoParry.Value then
-            -- Fluent.Options.AutoParry:SetValue(true) -- Опционально авто-включение
+function AutoParrySystem:_playParrySound()
+    -- Play parry sound effect
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://4856813123" -- Parry sound ID
+    sound.Volume = 0.5
+    sound.Parent = workspace.Terrain
+    sound:Play()
+    
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+end
+
+-- ============================================================================
+-- SECTION 4: ITEM ESP SYSTEM
+-- ============================================================================
+
+local ItemESP = {
+    _active = false,
+    _highlights = {},
+    _itemCache = {},
+    _scanInterval = 1,
+    _lastScanTime = 0,
+    _renderConnection = nil
+}
+
+function ItemESP:Initialize()
+    -- Load item models
+    self:_loadItemModels()
+    
+    -- Setup ESP toggle
+    Fluent.options.Toggles["ItemESPEnabled"]:OnChanged(function(value)
+        self._active = value
+        if value then
+            self:StartESP()
+        else
+            self:StopESP()
+        end
+    end)
+    
+    -- Item color customization
+    for itemName, defaultColor in pairs(ForsakenDatabase.Items) do
+        local colorPicker = Fluent.options.ColorPickers[itemName .. "Color"]
+        if colorPicker then
+            colorPicker:OnChanged(function(color)
+                self:_updateItemColor(itemName, color)
+            end)
         end
     end
-end)
+end
 
---// ======================================================
---// [ МОДУЛЬ: KEYBIND MANAGER (REMAPPING) ]
---// ======================================================
-ConfigTab:AddSection("Keybind Settings")
+function ItemESP:_loadItemModels()
+    -- Define item model identifiers
+    self._itemModels = {
+        ["Medkit"] = {
+            ModelName = "Medkit",
+            PrimaryPart = "Handle",
+            BoundingBox = Vector3.new(2, 1, 1),
+            GlowColor = ForsakenDatabase.Items["Medkit"]
+        },
+        ["BloxyCola"] = {
+            ModelName = "BloxyCola",
+            PrimaryPart = "Can",
+            BoundingBox = Vector3.new(0.5, 1, 0.5),
+            GlowColor = ForsakenDatabase.Items["BloxyCola"]
+        },
+        ["FriedChicken"] = {
+            ModelName = "FriedChicken",
+            PrimaryPart = "Bucket",
+            BoundingBox = Vector3.new(1, 1, 1),
+            GlowColor = Color3.fromRGB(255, 200, 0)
+        }
+    }
+end
 
-local BlockBind = ConfigTab:AddKeybind("BlockBind", {
-    Title = "Block Key",
-    Mode = "Hold",
-    Default = "F",
-    Callback = function(Value) getgenv().Entropy.Keybinds.Block = Value end
-})
+function ItemESP:StartESP()
+    -- Start scanning for items
+    self._renderConnection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self:_updateESP(deltaTime)
+    end)
+    
+    -- Initial scan
+    self:_scanForItems()
+    
+    Fluent:Notify({
+        Title = "Item ESP",
+        Content = "Item highlighting activated",
+        SubContent = "Scanning for Medkits, Bloxy Cola, and Fried Chicken...",
+        Duration = 3
+    })
+end
 
-local PunchBind = ConfigTab:AddKeybind("PunchBind", {
-    Title = "Punch Key",
-    Mode = "Toggle",
-    Default = "E",
-    Callback = function(Value) getgenv().Entropy.Keybinds.Punch = Value end
-})
+function ItemESP:StopESP()
+    if self._renderConnection then
+        self._renderConnection:Disconnect()
+        self._renderConnection = nil
+    end
+    
+    -- Remove all highlights
+    for _, highlight in pairs(self._highlights) do
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+    table.clear(self._highlights)
+    
+    Fluent:Notify({
+        Title = "Item ESP",
+        Content = "Item highlighting deactivated",
+        Duration = 2
+    })
+end
 
---// ======================================================
---// [ ФИНАЛЬНАЯ ЛОГИКА ОПТИМИЗАЦИИ (ДЛЯ 4000 СТРОК) ]
---// ======================================================
-
--- Система предотвращения вылета (Anti-AFK)
-local VirtualUser = game:GetService("VirtualUser")
-LP.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- Очистка памяти от визуальных эффектов (Lag Killer)
-ConfigTab:AddButton({
-    Title = "Extreme Lag Killer",
-    Description = "Удаляет тени, текстуры и сложные частицы",
-    Callback = function()
-        for _, v in pairs(game:GetDescendants()) do
-            if v:IsA("PostProcessEffect") or v:IsA("ParticleEmitter") or v:IsA("Explosion") then
-                v:Destroy()
+function ItemESP:_scanForItems()
+    -- Clear old cache
+    for item in pairs(self._itemCache) do
+        if not item:IsDescendantOf(workspace) then
+            self._itemCache[item] = nil
+            if self._highlights[item] then
+                self._highlights[item]:Destroy()
+                self._highlights[item] = nil
             end
         end
-        settings().Rendering.QualityLevel = 1
     end
-})
+    
+    -- Scan workspace for items
+    local function scanFolder(folder)
+        for _, item in ipairs(folder:GetDescendants()) do
+            self:_checkItem(item)
+        end
+    end
+    
+    -- Scan specific folders
+    scanFolder(workspace)
+    
+    -- Check for item spawners
+    for _, spawner in ipairs(workspace:GetChildren()) do
+        if spawner.Name:find("Spawn") and (spawner.Name:find("Medkit") or 
+           spawner.Name:find("Cola") or spawner.Name:find("Chicken")) then
+            scanFolder(spawner)
+        end
+    end
+end
 
---// ======================================================
---// [ ЗАКЛЮЧИТЕЛЬНЫЙ БЛОК: ЗАГРУЗКА И СОХРАНЕНИЕ ]
---// ======================================================
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
-
-InterfaceManager:SetFolder("EntropyV5_Forsaken")
-SaveManager:SetFolder("EntropyV5_Forsaken/Configs")
-
-SaveManager:BuildConfigSection(ConfigTab)
-InterfaceManager:BuildInterfaceSection(ConfigTab)
-
-SaveManager:LoadAutoloadConfig()
-
--- Уведомление о полной готовности
-Fluent:Notify({
-    Title = "Entropy Engine Loaded",
-    Content = "Все 8 модулей (4000+ строк логики) успешно инициализированы. Приятной игры!",
-    Duration = 8
-})
-
-print([[
-    ENTROPY ENGINE INITIALIZED
-    [+] Guest 1337 Combat Logic: READY
-    [+] Killer Anti-Abilities: READY
-    [+] Survivor Auto-Perks: READY
-    [+] Wiki-Data Integration: 100%
-    [+] Open Menu: Key K
-]])
+function ItemESP:_checkItem(item)
+    -- Check if item matches our database
+    for itemName, modelInfo in pairs(self._itemModels) do
