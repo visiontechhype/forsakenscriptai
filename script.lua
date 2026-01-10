@@ -8,6 +8,7 @@
 --// Security Check: Защита от декомпиляции и обнаружения (Stub)
 if not game:IsLoaded() then game.Loaded:Wait() end
 local StartTime = tick()
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 --// Global Optimization Variables
 local getgenv = getgenv or function() return _G end
