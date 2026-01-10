@@ -1,862 +1,476 @@
+--[[
+    FORSAKEN ULTIMATE FRAMEWORK - SAFE VERSION
+    Module 9: Advanced Survivor Automation
+    Version: 9.2.0 | Build: Forsaken_Ultimate_Framework_Safe
+    Description: Safe initialization with Fluent UI support
+]]--
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SafetyCore = {
-    Enabled = true,
-    DebugMode = false,
-    ErrorLog = {},
-    MaxErrors = 50
+-- ============================================================================
+-- SECTION 1: FLUENT UI WAITER & SAFETY SYSTEM
+-- ============================================================================
+
+local Framework = {
+    Version = "9.2.0",
+    Initialized = false,
+    FluentLoaded = false,
+    SafeMode = true
 }
 
--- Safe function wrapper
-function SafetyCore:Try(func, errorContext)
-    if not self.Enabled then
-        return func()
-    end
+-- Safe property access function
+local function SafeGet(obj, property, default)
+    if not obj then return default end
+    local success, value = pcall(function() return obj[property] end)
+    return success and value or default
+end
+
+-- Wait for Fluent UI with timeout
+local function WaitForFluent(timeout)
+    local startTime = tick()
+    local maxTime = timeout or 10
     
-    local success, result = pcall(func)
-    
-    if not success then
-        self:LogError(result, errorContext)
-        
-        if self.DebugMode then
-            warn(string.format("[SafetyCore] Error in %s: %s", errorContext or "unknown", result))
+    while tick() - startTime < maxTime do
+        if _G.Fluent then
+            Framework.FluentLoaded = true
+            return true
         end
+        task.wait(0.5)
     end
     
-    return success, result
+    warn("[Forsaken Framework] Fluent UI not found after " .. maxTime .. " seconds")
+    return false
 end
 
--- Safe property access
-function SafetyCore:GetProperty(obj, property, defaultValue)
-    if not obj then return defaultValue end
-    
-    local success, value = pcall(function()
-        return obj[property]
-    end)
-    
-    if success then
-        return value
-    end
-    
-    return defaultValue
-end
-
--- Safe method call
-function SafetyCore:CallMethod(obj, method, ...)
-    if not obj then return nil end
+-- Safe Fluent method call
+local function SafeFluentCall(method, ...)
+    if not Framework.FluentLoaded or not _G.Fluent then return nil end
     
     local success, result = pcall(function()
-        if obj[method] then
-            return obj[method](obj, ...)
+        if method == "Notify" and _G.Fluent.Notify then
+            return _G.Fluent.Notify(_G.Fluent, ...)
+        elseif method == "AddToggle" and _G.Fluent.AddToggle then
+            return _G.Fluent.AddToggle(_G.Fluent, ...)
+        elseif method == "AddSlider" and _G.Fluent.AddSlider then
+            return _G.Fluent.AddSlider(_G.Fluent, ...)
+        elseif method == "AddOptions" and _G.Fluent.AddOptions then
+            return _G.Fluent.AddOptions(_G.Fluent, ...)
+        elseif method == "AddColorPicker" and _G.Fluent.AddColorPicker then
+            return _G.Fluent.AddColorPicker(_G.Fluent, ...)
         end
         return nil
     end)
     
-    if not success and self.DebugMode then
-        warn(string.format("[SafetyCore] Method %s failed: %s", method, result))
-    end
-    
-    return success, result
+    return success and result or nil
 end
 
--- Error logging
-function SafetyCore:LogError(message, context)
-    table.insert(self.ErrorLog, {
-        Message = tostring(message),
-        Context = context or "unknown",
-        Time = os.time(),
-        Stack = debug.traceback()
+-- Safe notification
+local function SafeNotify(title, content, duration)
+    SafeFluentCall("Notify", {
+        Title = title or "Framework",
+        Content = content or "",
+        Duration = duration or 3
     })
+end
+
+-- ============================================================================
+-- SECTION 2: CONFIGURATION
+-- ============================================================================
+
+local Config = {
+    Debug = false,
     
-    -- Keep log manageable
-    if #self.ErrorLog > self.MaxErrors then
-        table.remove(self.ErrorLog, 1)
-    end
-end
-
--- Get service safely
-function SafetyCore:GetService(serviceName)
-    return self:Try(function()
-        return game:GetService(serviceName)
-    end, "GetService:" .. serviceName)
-end
-
--- ============================================================================
--- SECTION 2: DATABASE & CONFIGURATION
--- ============================================================================
-
-local ForsakenDatabase = {
-    Survivors = {
-        ["Guest 1337"] = {
-            Color = Color3.fromRGB(255, 255, 255),
-            Abilities = {"Charge", "Block", "Punch"}
-        },
-        ["Elliot"] = {
-            Color = Color3.fromRGB(255, 150, 0),
-            Abilities = {"Pizza Throw", "Deliverer's Resolve"}
-        }
-    },
-    Killers = {
-        ["1x1x1x1"] = {
-            Color = Color3.fromRGB(0, 255, 0),
-            Abilities = {"Mass Infection", "Unstable Eye"}
-        },
-        ["John Doe"] = {
-            Color = Color3.fromRGB(0, 255, 255),
-            Abilities = {"404 Error", "Digital Footprint"}
-        }
-    },
-    Items = {
-        ["Medkit"] = Color3.fromRGB(0, 255, 0),
-        ["BloxyCola"] = Color3.fromRGB(255, 0, 0),
-        ["Fried Chicken"] = Color3.fromRGB(255, 200, 0)
-    }
-}
-
-local Configuration = {
     ClassDetection = {
         Enabled = true,
         ScanInterval = 2,
-        ConfidenceThreshold = 60
+        Confidence = 60
     },
+    
     ESP = {
         Enabled = true,
-        ScanRange = 150,
+        Range = 150,
         ScanInterval = 1,
-        MaxItems = 100
+        MaxHighlights = 50
     },
+    
     AutoParry = {
         Enabled = true,
         Cooldown = 0.5,
-        ParryWindow = 0.3,
-        DetectionRange = 30
+        Window = 0.3,
+        Range = 30
     },
-    ProjectilePrediction = {
+    
+    Projectile = {
         Enabled = true,
-        UpdateInterval = 0.05,
-        MaxPredictionTime = 5,
-        PizzaVelocity = 50
+        UpdateRate = 0.05,
+        MaxTime = 5,
+        Velocity = 50
     }
 }
 
 -- ============================================================================
--- SECTION 3: CLASS DETECTION SYSTEM
+-- SECTION 3: CLASS DETECTION (SIMPLIFIED)
 -- ============================================================================
 
-local ClassDetector = {
+local ClassSystem = {
     CurrentClass = nil,
-    LastDetection = 0,
-    DetectionCooldown = 2,
-    ClassModules = {},
     Player = nil
 }
 
-function ClassDetector:Initialize()
-    local success = SafetyCore:Try(function()
+function ClassSystem:Init()
+    if not self.Player then
         self.Player = game.Players.LocalPlayer
+    end
+    
+    -- Safe character detection
+    local function detectCharacter(char)
+        if not char then return end
         
-        -- Connect character events
-        if self.Player.Character then
-            self:DetectCharacter(self.Player.Character)
+        task.wait(1) -- Wait for character to load
+        
+        -- Simple detection by display name
+        local displayName = self.Player.DisplayName
+        local className = nil
+        
+        if displayName:find("1337") then
+            className = "Guest 1337"
+        elseif displayName:find("Elliot") then
+            className = "Elliot"
+        elseif displayName:find("1x1x1x1") then
+            className = "1x1x1x1"
+        elseif displayName:find("John") then
+            className = "John Doe"
+        else
+            className = "Unknown"
         end
         
-        self.Player.CharacterAdded:Connect(function(char)
-            task.wait(1)
-            self:DetectCharacter(char)
-        end)
-        
-        -- Setup periodic detection
-        game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-            self.LastDetection = self.LastDetection + deltaTime
-            if self.LastDetection >= self.DetectionCooldown then
-                self:PeriodicDetection()
-                self.LastDetection = 0
-            end
-        end)
-        
-        -- Notify success
-        self:Notify("Class Detector", "Character detection system initialized")
-        
-        return true
-    end, "ClassDetector.Initialize")
+        self.CurrentClass = className
+        self:OnClassDetected(className)
+    end
     
-    return success
+    -- Connect events
+    if self.Player.Character then
+        detectCharacter(self.Player.Character)
+    end
+    
+    self.Player.CharacterAdded:Connect(detectCharacter)
+    
+    SafeNotify("Class System", "Detection system ready")
+    return true
 end
 
-function ClassDetector:DetectCharacter(character)
-    SafetyCore:Try(function()
-        -- Wait for humanoid
-        local humanoid = character:WaitForChild("Humanoid", 5)
-        if not humanoid then return end
-        
-        -- Get detection data
-        local detectionData = self:CollectDetectionData(character, humanoid)
-        
-        -- Score characters
-        local bestMatch = self:CalculateBestMatch(detectionData)
-        
-        -- Apply if confident
-        if bestMatch.Score >= Configuration.ClassDetection.ConfidenceThreshold then
-            self:SetCurrentClass(bestMatch.Name, bestMatch.Score)
-        end
-        
-    end, "ClassDetector.DetectCharacter")
+function ClassSystem:OnClassDetected(className)
+    SafeNotify("Class Detected", "Playing as: " .. className)
+    
+    -- Setup UI for this class
+    self:SetupClassUI(className)
 end
 
-function ClassDetector:CollectDetectionData(character, humanoid)
-    local data = {
-        Tools = {},
-        Animations = {},
-        Description = {}
-    }
+function ClassSystem:SetupClassUI(className)
+    if not Framework.FluentLoaded then return end
     
-    -- Check backpack tools
-    local backpack = self.Player:FindFirstChild("Backpack")
-    if backpack then
-        for _, item in ipairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                table.insert(data.Tools, item.Name)
-            end
-        end
-    end
+    -- Create class-specific tab
+    SafeFluentCall("AddOptions", className, {
+        Name = className,
+        LayoutOrder = 1
+    })
     
-    -- Check character tools
-    for _, item in ipairs(character:GetChildren()) do
-        if item:IsA("Tool") then
-            table.insert(data.Tools, item.Name)
-        end
-    end
-    
-    -- Check animations
-    local animator = humanoid:FindFirstChildOfClass("Animator")
-    if animator then
-        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-            if track.Animation then
-                table.insert(data.Animations, track.Animation.AnimationId)
-            end
-        end
-    end
-    
-    -- Check humanoid description
-    local desc = humanoid:GetAppliedDescription()
-    data.Description = {
-        BodyTypeScale = desc.BodyTypeScale,
-        HeadScale = desc.HeadScale,
-        HeightScale = desc.HeightScale
-    }
-    
-    return data
-end
-
-function ClassDetector:CalculateBestMatch(data)
-    local bestMatch = {Name = "Unknown", Score = 0}
-    
-    -- Define character signatures
-    local signatures = {
-        ["Guest 1337"] = {
-            ToolPatterns = {"Fist", "Block", "Shield"},
-            AnimationPatterns = {"punch", "block", "charge"},
-            DescriptionMatch = {BodyTypeScale = 0.9, HeadScale = 1.1}
-        },
-        ["Elliot"] = {
-            ToolPatterns = {"Pizza", "Box", "Delivery"},
-            AnimationPatterns = {"throw", "pizza", "deliver"},
-            DescriptionMatch = {BodyTypeScale = 1.0, HeadScale = 1.0}
-        },
-        ["1x1x1x1"] = {
-            ToolPatterns = {"Infection", "Vial", "Eye", "Orb"},
-            AnimationPatterns = {"infect", "beam", "unstable"},
-            DescriptionMatch = {BodyTypeScale = 0.8, HeadScale = 1.2}
-        },
-        ["John Doe"] = {
-            ToolPatterns = {"Error", "Glitch", "Digital", "Tracker"},
-            AnimationPatterns = {"error", "glitch", "digital"},
-            DescriptionMatch = {BodyTypeScale = 1.1, HeadScale = 0.9}
-        }
-    }
-    
-    -- Score each character
-    for charName, signature in pairs(signatures) do
-        local score = 0
-        
-        -- Tool matching (40 points)
-        for _, tool in ipairs(data.Tools) do
-            for _, pattern in ipairs(signature.ToolPatterns) do
-                if string.find(tool:lower(), pattern:lower()) then
-                    score = score + 10
-                    break
-                end
-            end
-        end
-        
-        -- Animation matching (30 points)
-        for _, anim in ipairs(data.Animations) do
-            for _, pattern in ipairs(signature.AnimationPatterns) do
-                if string.find(anim:lower(), pattern:lower()) then
-                    score = score + 10
-                    break
-                end
-            end
-        end
-        
-        -- Description matching (30 points)
-        for feature, targetValue in pairs(signature.DescriptionMatch) do
-            local actualValue = data.Description[feature]
-            if actualValue then
-                local diff = math.abs(actualValue - targetValue)
-                if diff < 0.1 then
-                    score = score + 10
-                end
-            end
-        end
-        
-        -- Check for best match
-        if score > bestMatch.Score then
-            bestMatch.Name = charName
-            bestMatch.Score = score
-        end
-    end
-    
-    return bestMatch
-end
-
-function ClassDetector:SetCurrentClass(className, confidence)
-    if self.CurrentClass == className then return end
-    
-    self.CurrentClass = className
-    
-    -- Deactivate old modules
-    for _, module in pairs(self.ClassModules) do
-        if module.Deactivate then
-            SafetyCore:Try(module.Deactivate, "ClassModule.Deactivate")
-        end
-    end
-    
-    -- Clear modules
-    self.ClassModules = {}
-    
-    -- Activate new modules based on class
+    -- Add class-specific toggles
     if className == "Guest 1337" then
-        self:ActivateGuest1337()
+        SafeFluentCall("AddToggle", "AutoBlockToggle", {
+            Title = "Auto-Block",
+            Description = "Automatically block incoming attacks",
+            Default = true
+        })
+        
+        SafeFluentCall("AddToggle", "AutoCounterToggle", {
+            Title = "Auto-Counter",
+            Description = "Counter attack after blocking",
+            Default = true
+        })
+        
     elseif className == "Elliot" then
-        self:ActivateElliot()
-    elseif className == "1x1x1x1" then
-        self:Activate1x1x1x1()
-    elseif className == "John Doe" then
-        self:ActivateJohnDoe()
+        SafeFluentCall("AddToggle", "PizzaPrediction", {
+            Title = "Pizza Prediction",
+            Description = "Show pizza throw trajectory",
+            Default = true
+        })
+        
+        SafeFluentCall("AddToggle", "AutoResolve", {
+            Title = "Auto-Resolve",
+            Description = "Auto use Resolve at low HP",
+            Default = true
+        })
     end
-    
-    -- Notify
-    self:Notify("Class Detection", 
-        string.format("Detected: %s (Confidence: %d%%)", className, confidence))
-end
-
-function ClassDetector:ActivateGuest1337()
-    SafetyCore:Try(function()
-        -- Auto-Parry module will be activated here
-        local module = {
-            Name = "AutoParry",
-            Active = true
-        }
-        
-        table.insert(self.ClassModules, module)
-        
-        -- Create UI options for Guest 1337
-        self:CreateClassUI("Guest 1337", {
-            {Type = "Toggle", Name = "AutoBlock", Title = "Auto-Block", Default = true},
-            {Type = "Toggle", Name = "AutoCounter", Title = "Auto-Counter", Default = true},
-            {Type = "Slider", Name = "ParryWindow", Title = "Parry Window", Min = 100, Max = 500, Default = 300}
-        })
-        
-    end, "ClassDetector.ActivateGuest1337")
-end
-
-function ClassDetector:ActivateElliot()
-    SafetyCore:Try(function()
-        -- Projectile Prediction module
-        local module = {
-            Name = "ProjectilePrediction",
-            Active = true
-        }
-        
-        table.insert(self.ClassModules, module)
-        
-        -- Create UI options for Elliot
-        self:CreateClassUI("Elliot", {
-            {Type = "Toggle", Name = "PredictPizza", Title = "Pizza Prediction", Default = true},
-            {Type = "Toggle", Name = "AutoResolve", Title = "Auto-Resolve", Default = true},
-            {Type = "Slider", Name = "ResolveHP", Title = "Resolve HP %", Min = 10, Max = 50, Default = 25}
-        })
-        
-    end, "ClassDetector.ActivateElliot")
-end
-
-function ClassDetector:Activate1x1x1x1()
-    SafetyCore:Try(function()
-        -- Infection cleanse module
-        local module = {
-            Name = "AutoCleanse",
-            Active = true
-        }
-        
-        table.insert(self.ClassModules, module)
-        
-        -- Create UI options
-        self:CreateClassUI("1x1x1x1", {
-            {Type = "Toggle", Name = "CleanseInfection", Title = "Auto-Cleanse", Default = true},
-            {Type = "Toggle", Name = "DodgeBeam", Title = "Dodge Beam", Default = true},
-            {Type = "Slider", Name = "DodgeSpeed", Title = "Dodge Speed", Min = 50, Max = 500, Default = 200}
-        })
-        
-    end, "ClassDetector.Activate1x1x1x1")
-end
-
-function ClassDetector:ActivateJohnDoe()
-    SafetyCore:Try(function()
-        -- Glitch removal module
-        local module = {
-            Name = "GlitchRemoval",
-            Active = true
-        }
-        
-        table.insert(self.ClassModules, module)
-        
-        -- Create UI options
-        self:CreateClassUI("John Doe", {
-            {Type = "Toggle", Name = "RemoveGlitches", Title = "Remove Glitches", Default = true},
-            {Type = "Toggle", Name = "EraseFootprints", Title = "Erase Footprints", Default = true},
-            {Type = "Toggle", Name = "GlitchESP", Title = "Glitch ESP", Default = false}
-        })
-        
-    end, "ClassDetector.ActivateJohnDoe")
-end
-
-function ClassDetector:CreateClassUI(className, options)
-    SafetyCore:Try(function()
-        -- Check if Fluent exists
-        if not Fluent then return end
-        
-        -- Create tab
-        Fluent:AddOptions(className, {
-            Name = className,
-            LayoutOrder = 1
-        })
-        
-        -- Add options
-        for _, option in ipairs(options) do
-            if option.Type == "Toggle" then
-                Fluent:AddToggle(option.Name, {
-                    Title = option.Title,
-                    Default = option.Default or false
-                })
-            elseif option.Type == "Slider" then
-                Fluent:AddSlider(option.Name, {
-                    Title = option.Title,
-                    Default = option.Default or option.Min,
-                    Min = option.Min,
-                    Max = option.Max,
-                    Rounding = 0
-                })
-            end
-        end
-        
-    end, "ClassDetector.CreateClassUI")
-end
-
-function ClassDetector:PeriodicDetection()
-    SafetyCore:Try(function()
-        local character = self.Player.Character
-        if character and not self.CurrentClass then
-            self:DetectCharacter(character)
-        end
-    end, "ClassDetector.PeriodicDetection")
-end
-
-function ClassDetector:Notify(title, content)
-    SafetyCore:Try(function()
-        if Fluent and Fluent.Notify then
-            Fluent:Notify({
-                Title = title,
-                Content = content,
-                Duration = 3
-            })
-        end
-    end, "ClassDetector.Notify")
 end
 
 -- ============================================================================
--- SECTION 4: ITEM ESP SYSTEM
+-- SECTION 4: ITEM ESP (SAFE VERSION)
 -- ============================================================================
 
 local ItemESP = {
     Active = false,
     Highlights = {},
-    ItemCache = {},
-    LastScan = 0
+    Items = {}
 }
 
-function ItemESP:Initialize()
-    SafetyCore:Try(function()
-        -- Create highlight pool
-        self:CreateHighlightPool()
+function ItemESP:Init()
+    -- Create highlight objects
+    for i = 1, Config.ESP.MaxHighlights do
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ESP_Highlight_" .. i
+        highlight.FillTransparency = 0.7
+        highlight.OutlineTransparency = 0.3
+        highlight.Enabled = false
+        highlight.Parent = workspace
         
-        -- Start scanning if enabled
-        if Configuration.ESP.Enabled then
-            self:Start()
-        end
-        
-        -- Setup UI toggle if Fluent exists
-        if Fluent then
-            Fluent:AddToggle("ItemESPEnabled", {
-                Title = "Item ESP",
-                Description = "Highlight items in the world",
-                Default = Configuration.ESP.Enabled,
-                Callback = function(value)
-                    Configuration.ESP.Enabled = value
-                    if value then
-                        self:Start()
-                    else
-                        self:Stop()
-                    end
+        self.Highlights[i] = highlight
+    end
+    
+    -- Setup UI toggle
+    if Framework.FluentLoaded then
+        SafeFluentCall("AddToggle", "ESPToggle", {
+            Title = "Item ESP",
+            Description = "Highlight Medkits and Bloxy Cola",
+            Default = Config.ESP.Enabled,
+            Callback = function(value)
+                Config.ESP.Enabled = value
+                if value then
+                    self:Start()
+                else
+                    self:Stop()
                 end
-            })
-        end
-        
-        self:Notify("Item ESP", "System initialized")
-        
-    end, "ItemESP.Initialize")
-end
-
-function ItemESP:CreateHighlightPool()
-    SafetyCore:Try(function()
-        self.HighlightPool = {}
-        
-        for i = 1, Configuration.ESP.MaxItems do
-            local highlight = Instance.new("Highlight")
-            highlight.Name = "ESP_Highlight_" .. i
-            highlight.FillTransparency = 0.7
-            highlight.OutlineTransparency = 0.3
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            highlight.Enabled = false
-            highlight.Parent = workspace
-            
-            table.insert(self.HighlightPool, highlight)
-        end
-        
-    end, "ItemESP.CreateHighlightPool")
+            end
+        })
+    end
+    
+    -- Start if enabled
+    if Config.ESP.Enabled then
+        self:Start()
+    end
+    
+    SafeNotify("Item ESP", "System initialized")
+    return true
 end
 
 function ItemESP:Start()
-    SafetyCore:Try(function()
-        self.Active = true
-        
-        -- Start update loop
-        self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-            self:Update(deltaTime)
-        end)
-        
-    end, "ItemESP.Start")
+    self.Active = true
+    
+    -- Start update loop
+    self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self:Update(deltaTime)
+    end)
 end
 
 function ItemESP:Stop()
-    SafetyCore:Try(function()
-        self.Active = false
-        
-        -- Disconnect loop
-        if self.Connection then
-            self.Connection:Disconnect()
-            self.Connection = nil
-        end
-        
-        -- Hide all highlights
-        for _, highlight in ipairs(self.HighlightPool) do
+    self.Active = false
+    
+    if self.Connection then
+        self.Connection:Disconnect()
+        self.Connection = nil
+    end
+    
+    -- Hide all highlights
+    for _, highlight in ipairs(self.Highlights) do
+        if highlight then
             highlight.Enabled = false
-            highlight.Adornee = nil
         end
-        
-        -- Clear cache
-        self.ItemCache = {}
-        
-    end, "ItemESP.Stop")
+    end
 end
 
 function ItemESP:Update(deltaTime)
     if not self.Active then return end
     
-    SafetyCore:Try(function()
-        self.LastScan = self.LastScan + deltaTime
-        
-        -- Scan at intervals
-        if self.LastScan >= Configuration.ESP.ScanInterval then
-            self:ScanForItems()
-            self.LastScan = 0
-        end
-        
-        -- Update existing highlights
-        self:UpdateHighlights()
-        
-    end, "ItemESP.Update")
-end
-
-function ItemESP:ScanForItems()
-    SafetyCore:Try(function()
-        -- Clear old cache entries
-        for item, data in pairs(self.ItemCache) do
-            if not item:IsDescendantOf(workspace) then
-                self.ItemCache[item] = nil
-            end
-        end
-        
-        -- Scan workspace
-        self:ScanFolder(workspace)
-        
-        -- Scan specific spawn locations
-        for _, child in ipairs(workspace:GetChildren()) do
-            if child.Name:find("Spawn") or child.Name:find("Item") then
-                self:ScanFolder(child)
-            end
-        end
-        
-    end, "ItemESP.ScanForItems")
-end
-
-function ItemESP:ScanFolder(folder)
-    SafetyCore:Try(function()
-        for _, item in ipairs(folder:GetDescendants()) do
-            self:CheckItem(item)
-        end
-    end, "ItemESP.ScanFolder")
-end
-
-function ItemESP:CheckItem(item)
-    SafetyCore:Try(function()
-        -- Check if item is a collectible
-        local itemType = self:IdentifyItemType(item)
-        
-        if itemType then
-            -- Add to cache
-            self.ItemCache[item] = {
-                Type = itemType,
-                LastSeen = tick(),
-                Position = self:GetItemPosition(item)
-            }
-        end
-        
-    end, "ItemESP.CheckItem")
-end
-
-function ItemESP:IdentifyItemType(item)
-    -- Check name patterns
-    local name = item.Name:lower()
-    local parentName = item.Parent and item.Parent.Name:lower() or ""
-    
-    if name:find("medkit") or parentName:find("medkit") then
-        return "Medkit"
-    elseif name:find("cola") or name:find("bloxy") then
-        return "BloxyCola"
-    elseif name:find("chicken") or name:find("fried") then
-        return "Fried Chicken"
+    -- Scan for items every second
+    self.LastScan = (self.LastScan or 0) + deltaTime
+    if self.LastScan >= Config.ESP.ScanInterval then
+        self:ScanItems()
+        self.LastScan = 0
     end
     
-    return nil
+    -- Update highlights
+    self:UpdateHighlights()
 end
 
-function ItemESP:GetItemPosition(item)
-    if item:IsA("BasePart") then
-        return item.Position
-    elseif item:IsA("Model") then
-        local primary = item.PrimaryPart
-        if primary then
-            return primary.Position
+function ItemESP:ScanItems()
+    self.Items = {}
+    
+    local function checkItem(item)
+        local name = item.Name:lower()
+        
+        if name:find("medkit") or name:find("firstaid") then
+            table.insert(self.Items, {
+                Object = item,
+                Type = "Medkit",
+                Color = Color3.fromRGB(0, 255, 0)
+            })
+        elseif name:find("cola") or name:find("bloxy") or name:find("soda") then
+            table.insert(self.Items, {
+                Object = item,
+                Type = "BloxyCola",
+                Color = Color3.fromRGB(255, 0, 0)
+            })
+        elseif name:find("chicken") or name:find("fried") then
+            table.insert(self.Items, {
+                Object = item,
+                Type = "FriedChicken",
+                Color = Color3.fromRGB(255, 200, 0)
+            })
         end
     end
     
-    return item:GetPivot().Position
+    -- Scan workspace
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("BasePart") or item:IsA("Model") then
+            checkItem(item)
+        end
+    end
 end
 
 function ItemESP:UpdateHighlights()
-    SafetyCore:Try(function()
-        local player = game.Players.LocalPlayer
-        local character = player.Character
-        local playerPos = character and character:GetPivot().Position or Vector3.zero
-        
-        -- Reset highlight pool
-        for _, highlight in ipairs(self.HighlightPool) do
+    local player = game.Players.LocalPlayer
+    local char = player.Character
+    if not char then return end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    -- Reset highlights
+    for _, highlight in ipairs(self.Highlights) do
+        if highlight then
             highlight.Enabled = false
         end
+    end
+    
+    -- Assign highlights to visible items
+    local index = 1
+    for _, itemData in ipairs(self.Items) do
+        if index > #self.Highlights then break end
         
-        local highlightIndex = 1
-        
-        -- Assign highlights to visible items
-        for item, data in pairs(self.ItemCache) do
-            if item:IsDescendantOf(workspace) then
-                -- Check distance
-                local distance = (data.Position - playerPos).Magnitude
+        local item = itemData.Object
+        if item and item:IsDescendantOf(workspace) then
+            -- Calculate position
+            local position
+            if item:IsA("BasePart") then
+                position = item.Position
+            elseif item:IsA("Model") then
+                local primary = item.PrimaryPart
+                position = primary and primary.Position or item:GetPivot().Position
+            end
+            
+            if position then
+                local distance = (position - root.Position).Magnitude
                 
-                if distance <= Configuration.ESP.ScanRange then
-                    -- Get highlight from pool
-                    local highlight = self.HighlightPool[highlightIndex]
+                if distance <= Config.ESP.Range then
+                    local highlight = self.Highlights[index]
                     if highlight then
-                        -- Configure highlight
                         highlight.Adornee = item
-                        highlight.Enabled = true
-                        
-                        -- Set color based on item type
-                        local color = ForsakenDatabase.Items[data.Type] or Color3.new(1, 1, 1)
-                        highlight.FillColor = color
+                        highlight.FillColor = itemData.Color
                         highlight.OutlineColor = Color3.new(
-                            color.R * 0.5,
-                            color.G * 0.5,
-                            color.B * 0.5
+                            itemData.Color.R * 0.5,
+                            itemData.Color.G * 0.5,
+                            itemData.Color.B * 0.5
                         )
-                        
-                        -- Adjust transparency based on distance
-                        local alpha = 1 - (distance / Configuration.ESP.ScanRange)
-                        highlight.FillTransparency = 0.7 - (alpha * 0.4)
-                        highlight.OutlineTransparency = 0.3 - (alpha * 0.2)
-                        
-                        highlightIndex = highlightIndex + 1
-                        
-                        -- Stop if pool is full
-                        if highlightIndex > #self.HighlightPool then
-                            break
-                        end
+                        highlight.Enabled = true
+                        index = index + 1
                     end
                 end
-            else
-                -- Item removed from workspace
-                self.ItemCache[item] = nil
             end
         end
-        
-    end, "ItemESP.UpdateHighlights")
-end
-
-function ItemESP:Notify(title, content)
-    SafetyCore:Try(function()
-        if Fluent and Fluent.Notify then
-            Fluent:Notify({
-                Title = title,
-                Content = content,
-                Duration = 2
-            })
-        end
-    end, "ItemESP.Notify")
+    end
 end
 
 -- ============================================================================
--- SECTION 5: AUTO-PARRY SYSTEM (Guest 1337)
+-- SECTION 5: AUTO-PARRY SYSTEM
 -- ============================================================================
 
 local AutoParry = {
-    Active = false,
-    LastParry = 0,
-    ParryCooldown = 0.5
+    Active = false
 }
 
-function AutoParry:Initialize()
-    SafetyCore:Try(function()
-        -- Setup UI if Fluent exists
-        if Fluent then
-            Fluent:AddToggle("AutoParryEnabled", {
-                Title = "Auto-Parry",
-                Description = "Automatically parry incoming attacks",
-                Default = Configuration.AutoParry.Enabled,
-                Callback = function(value)
-                    Configuration.AutoParry.Enabled = value
-                    if value then
-                        self:Start()
-                    else
-                        self:Stop()
-                    end
+function AutoParry:Init()
+    -- Setup UI toggle
+    if Framework.FluentLoaded then
+        SafeFluentCall("AddToggle", "AutoParryToggle", {
+            Title = "Auto-Parry",
+            Description = "Auto parry attacks (Guest 1337)",
+            Default = Config.AutoParry.Enabled,
+            Callback = function(value)
+                Config.AutoParry.Enabled = value
+                if value then
+                    self:Start()
+                else
+                    self:Stop()
                 end
-            })
-        end
-        
-        self:Notify("Auto-Parry", "System ready")
-        
-    end, "AutoParry.Initialize")
+            end
+        })
+    end
+    
+    if Config.AutoParry.Enabled then
+        self:Start()
+    end
+    
+    SafeNotify("Auto-Parry", "System ready")
+    return true
 end
 
 function AutoParry:Start()
-    SafetyCore:Try(function()
-        self.Active = true
-        
-        -- Start detection loop
-        self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-            self:Update(deltaTime)
-        end)
-        
-    end, "AutoParry.Start")
+    self.Active = true
+    self.LastParry = 0
+    
+    self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self:Update(deltaTime)
+    end)
 end
 
 function AutoParry:Stop()
-    SafetyCore:Try(function()
-        self.Active = false
-        
-        if self.Connection then
-            self.Connection:Disconnect()
-            self.Connection = nil
-        end
-        
-    end, "AutoParry.Stop")
+    self.Active = false
+    
+    if self.Connection then
+        self.Connection:Disconnect()
+        self.Connection = nil
+    end
 end
 
 function AutoParry:Update(deltaTime)
     if not self.Active then return end
     
-    SafetyCore:Try(function()
-        -- Update cooldown
-        self.LastParry = math.max(0, self.LastParry - deltaTime)
-        
-        -- Check for attacks if not on cooldown
-        if self.LastParry <= 0 then
-            local attackDetected = self:DetectAttack()
-            
-            if attackDetected then
-                self:ExecuteParry()
-                self.LastParry = self.ParryCooldown
-            end
-        end
-        
-    end, "AutoParry.Update")
-end
-
-function AutoParry:DetectAttack()
-    local character = game.Players.LocalPlayer.Character
-    if not character then return false end
+    -- Cooldown
+    self.LastParry = math.max(0, self.LastParry - deltaTime)
+    if self.LastParry > 0 then return end
     
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
+    -- Check for attacks
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
     
-    -- Check nearby players
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    -- Simple attack detection
     for _, player in ipairs(game.Players:GetPlayers()) do
         if player ~= game.Players.LocalPlayer then
-            local targetChar = player.Character
-            if targetChar then
-                local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-                if targetRoot then
-                    -- Check distance
-                    local distance = (targetRoot.Position - root.Position).Magnitude
+            local enemy = player.Character
+            if enemy then
+                local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
+                if enemyRoot then
+                    local distance = (enemyRoot.Position - root.Position).Magnitude
                     
-                    if distance <= Configuration.AutoParry.DetectionRange then
-                        -- Check for attack animations
-                        local isAttacking = self:CheckForAttack(targetChar)
+                    if distance <= Config.AutoParry.Range then
+                        -- Check if enemy is attacking
+                        local attacking = self:CheckAttack(enemy)
                         
-                        if isAttacking then
-                            return true
+                        if attacking then
+                            self:ExecuteParry()
+                            self.LastParry = Config.AutoParry.Cooldown
+                            break
                         end
                     end
                 end
             end
         end
     end
-    
-    return false
 end
 
-function AutoParry:CheckForAttack(character)
-    -- Check animations
+function AutoParry:CheckAttack(character)
+    -- Check for attack animations
     local humanoid = character:FindFirstChild("Humanoid")
     if humanoid then
         local animator = humanoid:FindFirstChildOfClass("Animator")
@@ -864,74 +478,25 @@ function AutoParry:CheckForAttack(character)
             for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
                 if track.Animation then
                     local animId = track.Animation.AnimationId:lower()
-                    
-                    -- Attack animation patterns
-                    if animId:find("attack") or 
-                       animId:find("punch") or 
-                       animId:find("slash") or
-                       animId:find("hit") then
+                    if animId:find("attack") or animId:find("punch") or animId:find("slash") then
                         return true
                     end
                 end
             end
         end
     end
-    
-    -- Check for weapon effects
-    for _, child in ipairs(character:GetDescendants()) do
-        if child:IsA("ParticleEmitter") and child.Enabled then
-            if child.Name:find("Attack") or 
-               child.Name:find("Swing") or
-               child.Name:find("Hit") then
-                return true
-            end
-        end
-    end
-    
     return false
 end
 
 function AutoParry:ExecuteParry()
-    SafetyCore:Try(function()
-        local character = game.Players.LocalPlayer.Character
-        if not character then return end
-        
-        -- Play block animation
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid then
-            -- Load animation
-            local animation = Instance.new("Animation")
-            animation.AnimationId = "rbxassetid://94701048" -- Generic block animation
-            
-            local animator = humanoid:FindFirstChildOfClass("Animator")
-            if animator then
-                local track = animator:LoadAnimation(animation)
-                track:Play()
-                
-                -- Create visual effect
-                self:CreateParryEffect(character)
-                
-                -- Stop animation after duration
-                task.wait(0.5)
-                track:Stop()
-            end
-        end
-        
-        -- Counter attack
-        task.wait(0.1)
-        self:ExecuteCounter()
-        
-    end, "AutoParry.ExecuteParry")
-end
-
-function AutoParry:CreateParryEffect(character)
-    SafetyCore:Try(function()
-        local root = character:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        
-        -- Create shield effect
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    
+    -- Visual effect
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
         local shield = Instance.new("Part")
-        shield.Size = Vector3.new(5, 7, 0.2)
+        shield.Size = Vector3.new(4, 6, 0.2)
         shield.Material = Enum.Material.Neon
         shield.Color = Color3.fromRGB(0, 150, 255)
         shield.Transparency = 0.5
@@ -941,543 +506,306 @@ function AutoParry:CreateParryEffect(character)
         shield.Parent = workspace
         
         -- Animate
-        local tweenService = game:GetService("TweenService")
-        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
-        local goal = {
+        game:GetService("TweenService"):Create(shield, TweenInfo.new(0.3), {
             Transparency = 1,
-            Size = Vector3.new(8, 10, 0.2)
-        }
+            Size = Vector3.new(6, 8, 0.2)
+        }):Play()
         
-        local tween = tweenService:Create(shield, tweenInfo, goal)
-        tween:Play()
-        
-        tween.Completed:Connect(function()
-            shield:Destroy()
-        end)
-        
-    end, "AutoParry.CreateParryEffect")
-end
-
-function AutoParry:ExecuteCounter()
-    SafetyCore:Try(function()
-        local character = game.Players.LocalPlayer.Character
-        if not character then return end
-        
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid then
-            -- Load punch animation
-            local animation = Instance.new("Animation")
-            animation.AnimationId = "rbxassetid://94701047" -- Generic punch animation
-            
-            local animator = humanoid:FindFirstChildOfClass("Animator")
-            if animator then
-                local track = animator:LoadAnimation(animation)
-                track:Play()
-                
-                -- Create punch effect
-                self:CreatePunchEffect(character)
-                
-                task.wait(0.3)
-                track:Stop()
-            end
-        end
-        
-    end, "AutoParry.ExecuteCounter")
-end
-
-function AutoParry:CreatePunchEffect(character)
-    SafetyCore:Try(function()
-        local root = character:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        
-        -- Create punch shockwave
-        local shockwave = Instance.new("Part")
-        shockwave.Shape = Enum.PartType.Ball
-        shockwave.Size = Vector3.new(1, 1, 1)
-        shockwave.Material = Enum.Material.Neon
-        shockwave.Color = Color3.fromRGB(255, 100, 0)
-        shockwave.Transparency = 0.5
-        shockwave.Anchored = true
-        shockwave.CanCollide = false
-        shockwave.CFrame = root.CFrame * CFrame.new(0, 0, -3)
-        shockwave.Parent = workspace
-        
-        -- Animate expansion
-        local tweenService = game:GetService("TweenService")
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
-        local goal = {
-            Transparency = 1,
-            Size = Vector3.new(8, 8, 8)
-        }
-        
-        local tween = tweenService:Create(shockwave, tweenInfo, goal)
-        tween:Play()
-        
-        tween.Completed:Connect(function()
-            shockwave:Destroy()
-        end)
-        
-    end, "AutoParry.CreatePunchEffect")
-end
-
-function AutoParry:Notify(title, content)
-    SafetyCore:Try(function()
-        if Fluent and Fluent.Notify then
-            Fluent:Notify({
-                Title = title,
-                Content = content,
-                Duration = 2
-            })
-        end
-    end, "AutoParry.Notify")
+        task.wait(0.3)
+        shield:Destroy()
+    end
+    
+    SafeNotify("Auto-Parry", "Attack parried!")
 end
 
 -- ============================================================================
--- SECTION 6: PROJECTILE PREDICTION (Elliot)
+-- SECTION 6: PROJECTILE PREDICTION
 -- ============================================================================
 
 local ProjectilePrediction = {
     Active = false,
-    PredictionPoints = {},
-    LastUpdate = 0
+    Points = {}
 }
 
-function ProjectilePrediction:Initialize()
-    SafetyCore:Try(function()
-        -- Create prediction visuals
-        self:CreatePredictionVisuals()
+function ProjectilePrediction:Init()
+    -- Create prediction points
+    for i = 1, 20 do
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        part.Material = Enum.Material.Neon
+        part.Color = Color3.fromRGB(255, 150, 0)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Transparency = 0.8
+        part.Visible = false
+        part.Parent = workspace
         
-        -- Setup UI if Fluent exists
-        if Fluent then
-            Fluent:AddToggle("ProjectilePredictionEnabled", {
-                Title = "Projectile Prediction",
-                Description = "Predict pizza throw trajectory",
-                Default = Configuration.ProjectilePrediction.Enabled,
-                Callback = function(value)
-                    Configuration.ProjectilePrediction.Enabled = value
-                    if value then
-                        self:Start()
-                    else
-                        self:Stop()
-                    end
+        self.Points[i] = part
+    end
+    
+    -- Setup UI toggle
+    if Framework.FluentLoaded then
+        SafeFluentCall("AddToggle", "PredictionToggle", {
+            Title = "Projectile Prediction",
+            Description = "Predict pizza trajectory (Elliot)",
+            Default = Config.Projectile.Enabled,
+            Callback = function(value)
+                Config.Projectile.Enabled = value
+                if value then
+                    self:Start()
+                else
+                    self:Stop()
                 end
-            })
-        end
-        
-        self:Notify("Projectile Prediction", "System ready")
-        
-    end, "ProjectilePrediction.Initialize")
-end
-
-function ProjectilePrediction:CreatePredictionVisuals()
-    SafetyCore:Try(function()
-        self.PredictionPoints = {}
-        
-        for i = 1, 30 do
-            local part = Instance.new("Part")
-            part.Size = Vector3.new(0.3, 0.3, 0.3)
-            part.Material = Enum.Material.Neon
-            part.Color = Color3.fromRGB(255, 150, 0) -- Elliot orange
-            part.Anchored = true
-            part.CanCollide = false
-            part.Transparency = 0.8
-            part.Visible = false
-            part.Parent = workspace
-            
-            table.insert(self.PredictionPoints, part)
-        end
-        
-    end, "ProjectilePrediction.CreatePredictionVisuals")
+            end
+        })
+    end
+    
+    if Config.Projectile.Enabled then
+        self:Start()
+    end
+    
+    SafeNotify("Projectile", "Prediction system ready")
+    return true
 end
 
 function ProjectilePrediction:Start()
-    SafetyCore:Try(function()
-        self.Active = true
-        
-        -- Start update loop
-        self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-            self:Update(deltaTime)
-        end)
-        
-    end, "ProjectilePrediction.Start")
+    self.Active = true
+    self.Connection = game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+        self:Update(deltaTime)
+    end)
 end
 
 function ProjectilePrediction:Stop()
-    SafetyCore:Try(function()
-        self.Active = false
-        
-        if self.Connection then
-            self.Connection:Disconnect()
-            self.Connection = nil
-        end
-        
-        -- Hide points
-        for _, point in ipairs(self.PredictionPoints) do
+    self.Active = false
+    
+    if self.Connection then
+        self.Connection:Disconnect()
+        self.Connection = nil
+    end
+    
+    -- Hide points
+    for _, point in ipairs(self.Points) do
+        if point then
             point.Visible = false
         end
-        
-    end, "ProjectilePrediction.Stop")
+    end
 end
 
 function ProjectilePrediction:Update(deltaTime)
     if not self.Active then return end
     
-    SafetyCore:Try(function()
-        self.LastUpdate = self.LastUpdate + deltaTime
-        
-        if self.LastUpdate >= Configuration.ProjectilePrediction.UpdateInterval then
-            self:UpdatePrediction()
-            self.LastUpdate = 0
-        end
-        
-    end, "ProjectilePrediction.Update")
-end
-
-function ProjectilePrediction:UpdatePrediction()
-    local character = game.Players.LocalPlayer.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid then return end
+    -- Check if player is Elliot
+    if ClassSystem.CurrentClass ~= "Elliot" then
+        self:Stop()
+        return
+    end
     
     -- Check if holding pizza
-    local holdingPizza = false
-    for _, tool in ipairs(character:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name:find("Pizza") then
-            holdingPizza = true
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    
+    local hasPizza = false
+    for _, item in ipairs(char:GetChildren()) do
+        if item:IsA("Tool") and item.Name:lower():find("pizza") then
+            hasPizza = true
             break
         end
     end
     
-    if not holdingPizza then
-        -- Hide points if not holding pizza
-        for _, point in ipairs(self.PredictionPoints) do
-            point.Visible = false
+    if not hasPizza then
+        for _, point in ipairs(self.Points) do
+            if point then point.Visible = false end
         end
         return
     end
     
     -- Calculate trajectory
-    local root = character:FindFirstChild("HumanoidRootPart")
+    local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
     
     local mouse = game.Players.LocalPlayer:GetMouse()
     local target = mouse.Hit.Position
     
-    -- Start position (shoulder height)
     local startPos = root.Position + Vector3.new(0, 2, 0)
     local direction = (target - startPos).Unit
     
     -- Calculate points
-    local points = self:CalculateTrajectory(startPos, direction)
-    
-    -- Update visualization
-    self:VisualizeTrajectory(points)
-end
-
-function ProjectilePrediction:CalculateTrajectory(startPos, direction)
-    local points = {}
     local gravity = workspace.Gravity
-    local velocity = Configuration.ProjectilePrediction.PizzaVelocity
+    local velocity = Config.Projectile.Velocity
     
-    local timeStep = 0.1
-    local currentTime = 0
-    
-    for i = 1, #self.PredictionPoints do
-        local t = currentTime
-        
-        -- Calculate position
-        local x = startPos.X + direction.X * velocity * t
-        local y = startPos.Y + direction.Y * velocity * t - 0.5 * gravity * t * t
-        local z = startPos.Z + direction.Z * velocity * t
-        
-        local point = Vector3.new(x, y, z)
-        table.insert(points, point)
-        
-        -- Check for collision
-        local rayOrigin = i == 1 and startPos or points[i-1]
-        local rayDirection = point - rayOrigin
-        
-        local raycastResult = workspace:Raycast(
-            rayOrigin,
-            rayDirection,
-            {game.Players.LocalPlayer.Character}
-        )
-        
-        if raycastResult then
-            -- Add collision point
-            table.insert(points, raycastResult.Position)
-            break
-        end
-        
-        currentTime = currentTime + timeStep
-        
-        -- Stop if going too far
-        if t > Configuration.ProjectilePrediction.MaxPredictionTime then
-            break
-        end
-    end
-    
-    return points
-end
-
-function ProjectilePrediction:VisualizeTrajectory(points)
-    -- Hide all points first
-    for _, point in ipairs(self.PredictionPoints) do
-        point.Visible = false
-    end
-    
-    -- Show points for trajectory
-    for i, position in ipairs(points) do
-        if i <= #self.PredictionPoints then
-            local point = self.PredictionPoints[i]
-            point.Position = position
+    for i, point in ipairs(self.Points) do
+        if point then
+            local t = i * 0.1
+            local pos = Vector3.new(
+                startPos.X + direction.X * velocity * t,
+                startPos.Y + direction.Y * velocity * t - 0.5 * gravity * t * t,
+                startPos.Z + direction.Z * velocity * t
+            )
+            
+            point.Position = pos
             point.Visible = true
             
-            -- Gradient color and transparency
-            local ratio = i / #points
-            point.Transparency = 0.8 - (ratio * 0.5)
-            
-            -- Color gradient (orange to red)
-            point.Color = Color3.new(
-                1, -- R stays high
-                0.6 - (ratio * 0.5), -- G decreases
-                0.1 + (ratio * 0.1) -- B slightly increases
-            )
+            -- Gradient
+            local ratio = i / #self.Points
+            point.Transparency = 0.8 - ratio * 0.3
         end
     end
 end
 
-function ProjectilePrediction:Notify(title, content)
-    SafetyCore:Try(function()
-        if Fluent and Fluent.Notify then
-            Fluent:Notify({
-                Title = title,
-                Content = content,
-                Duration = 2
-            })
-        end
-    end, "ProjectilePrediction.Notify")
-end
-
 -- ============================================================================
--- SECTION 7: MAIN INITIALIZATION
+-- SECTION 7: MAIN FRAMEWORK INITIALIZATION
 -- ============================================================================
 
-local ForsakenFramework = {
-    Initialized = false,
-    Modules = {}
-}
-
-function ForsakenFramework:Initialize()
-    if self.Initialized then return end
-    
+local function InitializeFramework()
     print("[Forsaken Framework] Starting initialization...")
     
-    -- Wait for game to load
-    task.wait(2)
+    -- Wait for game to fully load
+    task.wait(3)
     
-    -- Initialize Safety Core
-    SafetyCore:Try(function()
-        SafetyCore.Enabled = true
-        SafetyCore.DebugMode = false
-    end, "SafetyCore.Initialize")
+    -- Try to wait for Fluent UI
+    local fluentSuccess = WaitForFluent(15)
     
-    -- Wait for Fluent UI
-    local fluentLoaded = false
-    for i = 1, 10 do
-        if Fluent then
-            fluentLoaded = true
-            break
-        end
-        task.wait(1)
+    if fluentSuccess then
+        print("[Forsaken Framework] Fluent UI loaded successfully")
+        
+        -- Create main UI tab
+        SafeFluentCall("AddOptions", "ForsakenFramework", {
+            Name = "Forsaken Framework",
+            LayoutOrder = 0
+        })
+        
+        -- Add main toggle
+        SafeFluentCall("AddToggle", "FrameworkToggle", {
+            Title = "Framework Enabled",
+            Description = "Toggle all framework features",
+            Default = true,
+            Callback = function(value)
+                Framework.Enabled = value
+                if value then
+                    SafeNotify("Framework", "Framework enabled")
+                else
+                    SafeNotify("Framework", "Framework disabled")
+                end
+            end
+        })
+    else
+        warn("[Forsaken Framework] Running in safe mode (no Fluent UI)")
+        Framework.SafeMode = true
     end
     
-    if not fluentLoaded then
-        warn("[Forsaken Framework] Fluent UI not found, continuing without UI...")
-    end
-    
-    -- Initialize modules
+    -- Initialize modules with delay between each
     local modules = {
-        {Name = "ClassDetector", Module = ClassDetector},
-        {Name = "ItemESP", Module = ItemESP},
-        {Name = "AutoParry", Module = AutoParry},
-        {Name = "ProjectilePrediction", Module = ProjectilePrediction}
+        {Name = "Class System", Func = function() return ClassSystem:Init() end},
+        {Name = "Item ESP", Func = function() return ItemESP:Init() end},
+        {Name = "Auto-Parry", Func = function() return AutoParry:Init() end},
+        {Name = "Projectile Prediction", Func = function() return ProjectilePrediction:Init() end}
     }
     
-    for _, moduleData in ipairs(modules) do
-        local success = SafetyCore:Try(function()
-            if moduleData.Module.Initialize then
-                moduleData.Module:Initialize()
-            end
-            return true
-        end, moduleData.Name .. ".Initialize")
+    for i, module in ipairs(modules) do
+        local success, result = pcall(module.Func)
         
         if success then
-            self.Modules[moduleData.Name] = moduleData.Module
-            print(string.format("[Forsaken Framework] %s initialized", moduleData.Name))
+            print(string.format("[Forsaken Framework] %s initialized", module.Name))
         else
-            warn(string.format("[Forsaken Framework] Failed to initialize %s", moduleData.Name))
+            warn(string.format("[Forsaken Framework] Failed to initialize %s: %s", 
+                  module.Name, tostring(result)))
         end
         
-        task.wait(0.5) -- Stagger initialization
+        task.wait(1) -- Delay between modules
     end
     
-    -- Final setup
-    SafetyCore:Try(function()
-        -- Create main UI tab if Fluent exists
-        if Fluent then
-            Fluent:AddOptions("ForsakenFramework", {
-                Name = "Forsaken Framework",
-                LayoutOrder = 0
-            })
-            
-            -- Add status toggle
-            Fluent:AddToggle("FrameworkEnabled", {
-                Title = "Framework Enabled",
-                Description = "Toggle all framework features",
-                Default = true,
-                Callback = function(value)
-                    self:SetEnabled(value)
-                end
-            })
-        end
-        
-        self.Initialized = true
-        
-        -- Success notification
-        SafetyCore:Try(function()
-            if Fluent and Fluent.Notify then
-                Fluent:Notify({
-                    Title = "Forsaken Framework",
-                    Content = "Advanced Survivor Automation loaded",
-                    SubContent = "All systems operational",
-                    Duration = 5
-                })
-            end
-        end, "SuccessNotification")
-        
-        print("[Forsaken Framework] Initialization complete")
-        
-    end, "ForsakenFramework.FinalSetup")
+    Framework.Initialized = true
     
-    return self.Initialized
-end
-
-function ForsakenFramework:SetEnabled(enabled)
-    SafetyCore:Try(function()
-        -- Enable/disable all modules
-        if ClassDetector then
-            if enabled then
-                ClassDetector:Initialize()
-            end
-        end
-        
-        if ItemESP then
-            if enabled and Configuration.ESP.Enabled then
-                ItemESP:Start()
-            else
-                ItemESP:Stop()
-            end
-        end
-        
-        if AutoParry then
-            if enabled and Configuration.AutoParry.Enabled then
-                AutoParry:Start()
-            else
-                AutoParry:Stop()
-            end
-        end
-        
-        if ProjectilePrediction then
-            if enabled and Configuration.ProjectilePrediction.Enabled then
-                ProjectilePrediction:Start()
-            else
-                ProjectilePrediction:Stop()
-            end
-        end
-        
-    end, "ForsakenFramework.SetEnabled")
-end
-
-function ForsakenFramework:GetStatus()
-    return {
-        Initialized = self.Initialized,
-        SafetyCore = {
-            Enabled = SafetyCore.Enabled,
-            ErrorCount = #SafetyCore.ErrorLog
-        },
-        Modules = {
-            ClassDetector = ClassDetector.CurrentClass or "Not detected",
-            ItemESP = ItemESP.Active,
-            AutoParry = AutoParry.Active,
-            ProjectilePrediction = ProjectilePrediction.Active
-        },
-        Configuration = Configuration
-    }
+    -- Final notification
+    if fluentSuccess then
+        SafeFluentCall("Notify", {
+            Title = "Forsaken Framework",
+            Content = "Advanced automation systems loaded",
+            SubContent = "Version " .. Framework.Version,
+            Duration = 5
+        })
+    end
+    
+    print("[Forsaken Framework] Initialization complete!")
+    
+    return true
 end
 
 -- ============================================================================
 -- SECTION 8: AUTO-START AND CLEANUP
 -- ============================================================================
 
--- Auto-start the framework
+-- Auto-start after delay
 task.spawn(function()
-    task.wait(5) -- Wait for game to fully load
+    task.wait(5) -- Initial game loading
     
-    local success = ForsakenFramework:Initialize()
+    local success, err = pcall(InitializeFramework)
     
-    if success then
-        -- Periodic status check
-        game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-            -- Every 60 seconds, check system health
-            if tick() % 60 < deltaTime then
-                local status = ForsakenFramework:GetStatus()
-                
-                -- Log status
-                print(string.format(
-                    "[Forsaken Framework] Status: Class=%s, ESP=%s, Parry=%s, Prediction=%s",
-                    status.Modules.ClassDetector,
-                    status.Modules.ItemESP and "On" or "Off",
-                    status.Modules.AutoParry and "On" or "Off",
-                    status.Modules.ProjectilePrediction and "On" or "Off"
-                ))
-                
-                -- Check for errors
-                if status.SafetyCore.ErrorCount > 10 then
-                    warn(string.format(
-                        "[Forsaken Framework] High error count: %d",
-                        status.SafetyCore.ErrorCount
-                    ))
-                end
+    if not success then
+        warn("[Forsaken Framework] Critical initialization error: " .. tostring(err))
+        
+        -- Try minimal recovery
+        pcall(function()
+            if Framework.FluentLoaded then
+                SafeFluentCall("Notify", {
+                    Title = "Framework Error",
+                    Content = "Failed to initialize some features",
+                    Duration = 5
+                })
             end
         end)
-    else
-        warn("[Forsaken Framework] Failed to initialize framework")
     end
 end)
 
--- Cleanup on leave
-game:GetService("Players").LocalPlayer.CharacterRemoving:Connect(function()
-    SafetyCore:Try(function()
-        -- Stop all active systems
-        if ItemESP.Active then ItemESP:Stop() end
-        if AutoParry.Active then AutoParry:Stop() end
-        if ProjectilePrediction.Active then ProjectilePrediction:Stop() end
-        
-        -- Cleanup visuals
-        for _, point in ipairs(ProjectilePrediction.PredictionPoints or {}) do
-            point:Destroy()
+-- Cleanup on character removal
+game.Players.LocalPlayer.CharacterRemoving:Connect(function()
+    -- Stop all systems
+    if ItemESP.Active then
+        pcall(function() ItemESP:Stop() end)
+    end
+    
+    if AutoParry.Active then
+        pcall(function() AutoParry:Stop() end)
+    end
+    
+    if ProjectilePrediction.Active then
+        pcall(function() ProjectilePrediction:Stop() end)
+    end
+    
+    -- Cleanup highlights
+    for _, highlight in ipairs(ItemESP.Highlights) do
+        if highlight then
+            pcall(function() highlight:Destroy() end)
         end
-        
-        for _, highlight in ipairs(ItemESP.HighlightPool or {}) do
-            highlight:Destroy()
+    end
+    
+    -- Cleanup prediction points
+    for _, point in ipairs(ProjectilePrediction.Points) do
+        if point then
+            pcall(function() point:Destroy() end)
         end
-        
-    end, "Cleanup")
+    end
 end)
 
--- Return framework for external use
-return ForsakenFramework
+-- Return framework interface
+return {
+    Version = Framework.Version,
+    Initialized = function() return Framework.Initialized end,
+    GetStatus = function()
+        return {
+            FluentLoaded = Framework.FluentLoaded,
+            SafeMode = Framework.SafeMode,
+            Class = ClassSystem.CurrentClass,
+            ESP = ItemESP.Active,
+            AutoParry = AutoParry.Active,
+            Prediction = ProjectilePrediction.Active
+        }
+    end,
+    ToggleESP = function(state)
+        if state then
+            ItemESP:Start()
+        else
+            ItemESP:Stop()
+        end
+    end
+}
