@@ -8,7 +8,7 @@
 -- ============================================================================
 -- SECTION 1: SAFETY CORE SYSTEM
 -- ============================================================================
-
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SafetyCore = {
     Enabled = true,
     DebugMode = false,
