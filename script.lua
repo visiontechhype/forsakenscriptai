@@ -1,7 +1,14 @@
 --// [ INITIALIZATION ]
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local StartTime = tick()
+--// [ ОПТИМИЗИРОВАННЫЙ ЛОАДЕР ORION ]
+local OrionLib
+local success, err = pcall(function()
+    return loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+end)
 
+if not success or not OrionLib then
+    -- Запасная ссылка, если основная лежит
+    OrionLib = loadstring(game:HttpGet(('https://pastebin.com/raw/09H97S0v')))() 
+end
 --// [ СЕКЦИЯ 1: DATABASE & SERVICES ]
 local Services = {
     Players = game:GetService("Players"),
